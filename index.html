@@ -27,6 +27,13 @@
     .park-game { position: relative; width: 100%; height: 200px; background: #7f1d1d; overflow: hidden; }
     .park-zone { position: absolute; width: 60px; height: 100%; background: #166534; left: 50%; transform: translateX(-50%); }
     .park-cat { position: absolute; font-size: 2rem; transition: left 0.15s linear; }
+
+    /* Мобильный режим */
+    body.mobile .cat-card { width: 100% !important; }
+    body.mobile .btn { padding: 0.75rem 1.25rem; font-size: 1rem; }
+    body.mobile .tab-btn { font-size: 0.8rem; }
+    body.mobile #app { max-width: 100% !important; }
+    body.mobile .modal-content { width: 95% !important; max-width: 95% !important; }
   </style>
 </head>
 <body class="min-h-screen flex flex-col items-center justify-start p-4">
@@ -71,6 +78,8 @@
   <div id="park-game-modal" class="modal"><div class="modal-content w-96" id="park-game-content"></div></div>
   <div id="inventory-modal" class="modal"><div class="modal-content max-w-lg" id="inventory-modal-content"></div></div>
   <div id="item-use-modal" class="modal"><div class="modal-content" id="item-use-modal-content"></div></div>
+  <div id="family-tree-modal" class="modal"><div class="modal-content max-w-lg" id="family-tree-content"></div></div>
+  <div id="device-modal" class="modal"><div class="modal-content" id="device-modal-content"></div></div>
 
   <script>
     const firebaseConfig = {
@@ -93,7 +102,6 @@
     const EYE_COLORS = ['голубой','зелёный','жёлтый','карий','красно-розовый'];
     const CHARACTERS = ['спокойный','игривый','ленивый','любопытный','независимый','ласковый'];
 
-    // Генетика окрасов
     const colorInheritance = {
       'чёрный_чёрный':[{c:'чёрный',p:80},{c:'серый',p:15},{c:'белый',p:5}],
       'чёрный_серый':[{c:'чёрный',p:50},{c:'серый',p:40},{c:'белый',p:10}],
@@ -133,35 +141,25 @@
       'голубой_голубой':[{c:'голубой',p:80},{c:'серый',p:15},{c:'белый',p:5}]
     };
 
-    // Мутации
     function applyMutations(cat) {
       const r = Math.random() * 100;
-      if (r < 2) { // альбинизм
-        cat.mainColor = 'белый';
-        cat.pattern = 'однотонный';
-        cat.eyeColor = 'красно-розовый';
-        cat.mutations.push('альбинизм');
-        return;
+      if (r < 2) {
+        cat.mainColor = 'белый'; cat.pattern = 'однотонный'; cat.eyeColor = 'красно-розовый';
+        cat.mutations.push('альбинизм'); return;
       }
-      if (r < 5) { // гетерохромия
+      if (r < 5) {
         const c1 = EYE_COLORS[Math.floor(Math.random()*EYE_COLORS.length)];
         let c2 = EYE_COLORS[Math.floor(Math.random()*EYE_COLORS.length)];
         while (c2 === c1) c2 = EYE_COLORS[Math.floor(Math.random()*EYE_COLORS.length)];
         cat.eyeColor = { type:'разные', colors: [c1, c2] };
-        cat.mutations.push('гетерохромия');
-        return;
+        cat.mutations.push('гетерохромия'); return;
       }
-      if (r < 8) { // витилиго
-        if (cat.age === 'котёнок') {
-          cat.pattern = 'крапчатый';
-        } else {
-          cat.pattern = 'пятнистый';
-          cat.mainColor += ' (осветлённые пятна)';
-        }
-        cat.mutations.push('витилиго');
-        return;
+      if (r < 8) {
+        if (cat.age === 'котёнок') cat.pattern = 'крапчатый';
+        else { cat.pattern = 'пятнистый'; cat.mainColor += ' (осветлённые пятна)'; }
+        cat.mutations.push('витилиго'); return;
       }
-      if (r < 9) { // химеризм
+      if (r < 9) {
         cat.secondaryColor = COLORS[Math.floor(Math.random()*COLORS.length)];
         cat.pattern = 'наполовину разный';
         cat.mutations.push('химеризм');
@@ -175,119 +173,122 @@
       }
     }
 
-    // Генерация котенка от родителей с наследованием и мутациями
-    function generateKittenFromParents(mother, father) {
+    function generateKittenFromParents(mother, father, motherId, fatherId) {
       const kitten = {
-        gender: Math.random() < 0.5 ? 'male' : 'female',
-        age: 'котёнок',
-        state: 'лежит',
+        gender: Math.random() < 0.5 ? 'male' : 'female', age: 'котёнок', state: 'лежит',
         mainColor: getInheritedColor(mother.mainColor, father.mainColor),
         pattern: getInheritedPattern(mother.pattern, father.pattern),
         eyeColor: getInheritedEyeColor(mother.eyeColor, father.eyeColor),
         character: CHARACTERS[Math.floor(Math.random()*CHARACTERS.length)],
-        mutations: [],
-        secondaryColor: null,
-        isPregnant: false,
-        pregnancyEnd: null,
-        tiredUntil: null,
-        birthCount: 0
+        mutations: [], secondaryColor: null, isPregnant: false, pregnancyEnd: null, tiredUntil: null, birthCount: 0,
+        motherId, fatherId, adultAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 3*60000))
       };
-      // Шанс мутации: если оба родителя с одной мутацией, 75% наследование
-      const motherMutations = mother.mutations || [];
-      const fatherMutations = father.mutations || [];
-      motherMutations.forEach(m => {
-        if (fatherMutations.includes(m) && Math.random() < 0.75) kitten.mutations.push(m);
-      });
+      const motherMuts = mother.mutations || [], fatherMuts = father.mutations || [];
+      motherMuts.forEach(m => { if (fatherMuts.includes(m) && Math.random() < 0.75) kitten.mutations.push(m); });
       if (kitten.mutations.length === 0) applyMutations(kitten);
       return kitten;
     }
 
     function getInheritedColor(mc, fc) {
-      if (mc === fc) {
-        const key = `${mc}_${fc}`;
-        if (colorInheritance[key]) return pickFromProb(colorInheritance[key]);
-        return mc;
-      }
-      const key1 = `${mc}_${fc}`, key2 = `${fc}_${mc}`;
-      const entry = colorInheritance[key1] || colorInheritance[key2];
-      if (entry) return pickFromProb(entry);
+      if (mc === fc) { const key = `${mc}_${fc}`; if (colorInheritance[key]) return pickFromProb(colorInheritance[key]); return mc; }
+      const k1=`${mc}_${fc}`, k2=`${fc}_${mc}`;
+      const e = colorInheritance[k1] || colorInheritance[k2];
+      if (e) return pickFromProb(e);
       return Math.random() < 0.5 ? mc : fc;
     }
-
     function getInheritedPattern(mp, fp) {
       if (mp === fp) return Math.random() < 0.8 ? mp : PATTERNS[Math.floor(Math.random()*PATTERNS.length)];
       return Math.random() < 0.5 ? mp : fp;
     }
-
     function getInheritedEyeColor(me, fe) {
-      const meClean = typeof me === 'object' ? me.colors[0] : me;
-      const feClean = typeof fe === 'object' ? fe.colors[0] : fe;
-      if (meClean === feClean) return Math.random() < 0.8 ? meClean : EYE_COLORS[Math.floor(Math.random()*EYE_COLORS.length)];
-      return Math.random() < 0.5 ? meClean : feClean;
+      const mc = typeof me === 'object' ? me.colors[0] : me;
+      const fc = typeof fe === 'object' ? fe.colors[0] : fe;
+      if (mc === fc) return Math.random() < 0.8 ? mc : EYE_COLORS[Math.floor(Math.random()*EYE_COLORS.length)];
+      return Math.random() < 0.5 ? mc : fc;
     }
-
-    function pickFromProb(arr) {
-      const r = Math.random() * 100;
-      let cum = 0;
-      for (const item of arr) { cum += item.p; if (r <= cum) return item.c; }
-      return arr[arr.length-1].c;
-    }
+    function pickFromProb(arr) { const r = Math.random()*100; let cum=0; for(const i of arr){cum+=i.p; if(r<=cum) return i.c;} return arr[arr.length-1].c; }
 
     function generateRandomCat() {
       const cat = {
-        gender: Math.random() < 0.5 ? 'male' : 'female',
-        age: 'взрослый',
-        state: 'лежит',
+        gender: Math.random()<0.5?'male':'female', age:'взрослый', state:'лежит',
         mainColor: COLORS[Math.floor(Math.random()*COLORS.length)],
         pattern: PATTERNS[Math.floor(Math.random()*PATTERNS.length)],
         eyeColor: EYE_COLORS[Math.floor(Math.random()*EYE_COLORS.length)],
         character: CHARACTERS[Math.floor(Math.random()*CHARACTERS.length)],
-        mutations: [],
-        secondaryColor: Math.random() < 0.3 ? COLORS[Math.floor(Math.random()*COLORS.length)] : null,
-        isPregnant: false,
-        pregnancyEnd: null,
-        tiredUntil: null,
-        birthCount: 0
+        mutations: [], secondaryColor: Math.random()<0.3?COLORS[Math.floor(Math.random()*COLORS.length)]:null,
+        isPregnant: false, pregnancyEnd: null, tiredUntil: null, birthCount: 0,
+        motherId: null, fatherId: null
       };
       applyMutations(cat);
       return cat;
     }
 
     function updateGameTimeDisplay() {
-      const h = Math.floor(gameMinutes / 60) % 24;
-      const m = gameMinutes % 60;
-      const icon = (h >= 6 && h < 18) ? '☀️' : '🌃';
-      document.getElementById('game-time').textContent = `${icon} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+      const h = Math.floor(gameMinutes / 60) % 24, m = gameMinutes % 60;
+      document.getElementById('game-time').textContent = `${h>=6&&h<18?'☀️':'🌃'} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
     }
     function incrementGameTime() { gameMinutes++; updateGameTimeDisplay(); }
 
-    // Auth
-    document.getElementById('login-btn').addEventListener('click', () => {
-      auth.signInWithEmailAndPassword(document.getElementById('email').value.trim(), document.getElementById('password').value)
-        .catch(e => alert(e.message));
-    });
-    document.getElementById('register-btn').addEventListener('click', () => {
+    // ========== Выбор устройства ==========
+    function applyDeviceMode(mode) {
+      if (mode === 'mobile') {
+        document.body.classList.add('mobile');
+      } else {
+        document.body.classList.remove('mobile');
+      }
+      localStorage.setItem('device', mode);
+    }
+
+    function showDeviceModal() {
+      const modal = document.getElementById('device-modal');
+      const content = document.getElementById('device-modal-content');
+      content.innerHTML = `
+        <h2 class="text-xl font-bold mb-4">Выберите устройство</h2>
+        <div class="grid grid-cols-2 gap-4">
+          <button id="choose-mobile" class="btn btn-pink p-6 text-2xl">📱<br><span class="text-sm">Телефон</span></button>
+          <button id="choose-desktop" class="btn btn-pink p-6 text-2xl">💻<br><span class="text-sm">Компьютер</span></button>
+        </div>`;
+      modal.classList.add('active');
+      document.getElementById('choose-mobile').addEventListener('click', () => {
+        applyDeviceMode('mobile');
+        modal.classList.remove('active');
+      });
+      document.getElementById('choose-desktop').addEventListener('click', () => {
+        applyDeviceMode('desktop');
+        modal.classList.remove('active');
+      });
+    }
+
+    function checkDeviceSelection() {
+      if (!localStorage.getItem('device')) {
+        showDeviceModal();
+      } else {
+        applyDeviceMode(localStorage.getItem('device'));
+      }
+    }
+
+    // ========== Auth ==========
+    document.getElementById('login-btn').addEventListener('click', ()=> auth.signInWithEmailAndPassword(document.getElementById('email').value.trim(), document.getElementById('password').value).catch(e=>alert(e.message)));
+    document.getElementById('register-btn').addEventListener('click', ()=>{
       const nick = document.getElementById('nickname').value.trim();
-      const email = document.getElementById('email').value.trim();
-      const pass = document.getElementById('password').value;
-      if (!nick) return alert('Введите ник');
-      auth.createUserWithEmailAndPassword(email, pass)
-        .then(userCred => db.collection('users').doc(userCred.user.uid).set({ coins: 100, nickname: nick }))
-        .catch(e => alert(e.message));
+      if(!nick) return alert('Введите ник');
+      auth.createUserWithEmailAndPassword(document.getElementById('email').value.trim(), document.getElementById('password').value)
+        .then(userCred => db.collection('users').doc(userCred.user.uid).set({ coins:100, nickname:nick }))
+        .catch(e=>alert(e.message));
     });
 
-    auth.onAuthStateChanged(user => {
-      if (user) {
-        currentUser = user;
+    auth.onAuthStateChanged(user=>{
+      if(user){
+        currentUser=user;
         document.getElementById('auth-container').classList.add('hidden');
         document.getElementById('app').classList.remove('hidden');
         initApp();
       } else {
-        currentUser = null;
+        currentUser=null;
         document.getElementById('auth-container').classList.remove('hidden');
         document.getElementById('app').classList.add('hidden');
-        if (timeInterval) clearInterval(timeInterval);
-        if (notificationsListener) notificationsListener();
+        if(timeInterval) clearInterval(timeInterval);
+        if(notificationsListener) notificationsListener();
       }
     });
 
@@ -295,70 +296,72 @@
       updateGameTimeDisplay();
       timeInterval = setInterval(incrementGameTime, 1000);
       const userDoc = await db.collection('users').doc(currentUser.uid).get();
-      if (!userDoc.exists) await db.collection('users').doc(currentUser.uid).set({ coins: 100, nickname: currentUser.email });
-      if (currentUser.email === 'katya2013sara1981@gmail.com') document.getElementById('reset-btn').classList.remove('hidden');
+      if(!userDoc.exists) await db.collection('users').doc(currentUser.uid).set({ coins:100, nickname:currentUser.email });
+      if(currentUser.email==='katya2013sara1981@gmail.com') document.getElementById('reset-btn').classList.remove('hidden');
       updateCoinsDisplay();
       listenNotifications();
+      checkDeviceSelection();
       switchTab('home');
     }
 
     function updateCoinsDisplay() {
-      db.collection('users').doc(currentUser.uid).get().then(doc => {
-        document.getElementById('coins-display').textContent = `🪙 ${doc.exists ? doc.data().coins : 0}`;
+      db.collection('users').doc(currentUser.uid).get().then(doc=>{
+        document.getElementById('coins-display').textContent = `🪙 ${doc.exists?doc.data().coins:0}`;
       });
     }
 
     function listenNotifications() {
-      if (notificationsListener) notificationsListener();
+      if(notificationsListener) notificationsListener();
       notificationsListener = db.collection('users').doc(currentUser.uid)
-        .collection('notifications').where('read', '==', false)
-        .onSnapshot(snap => {
+        .collection('notifications').where('read','==',false)
+        .onSnapshot(snap=>{
           const c = snap.size;
           const badge = document.getElementById('msg-badge');
-          if (c > 0) { badge.textContent = c; badge.classList.remove('hidden'); }
+          if(c>0){ badge.textContent=c; badge.classList.remove('hidden'); }
           else badge.classList.add('hidden');
         });
     }
 
-    document.getElementById('reset-btn').addEventListener('click', async () => {
-      if (!confirm('Удалить ВСЕ данные?')) return;
+    document.getElementById('reset-btn').addEventListener('click', async ()=>{
+      if(!confirm('Удалить ВСЕ данные?')) return;
       const cols = ['cats','users','park','sales','trades','server'];
       const batch = db.batch();
-      for (const col of cols) {
-        const snap = await db.collection(col).get();
-        snap.forEach(d => batch.delete(d.ref));
-      }
+      for(const col of cols) { const snap = await db.collection(col).get(); snap.forEach(d=>batch.delete(d.ref)); }
       await batch.commit();
       auth.signOut();
     });
 
-    document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+    document.getElementById('account-btn').addEventListener('click', () => {
+      showDeviceModal();
+    });
+
+    document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click', ()=> switchTab(b.dataset.tab)));
     function switchTab(t) {
-      currentTab = t;
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      currentTab=t;
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
       document.querySelector(`[data-tab="${t}"]`).classList.add('active');
       const c = document.getElementById('tab-content');
-      if (t === 'home') renderHome();
-      else if (t === 'allcats') renderAllCats();
-      else if (t === 'breeding') renderBreeding();
-      else if (t === 'shop') renderShop();
-      else if (t === 'park') renderPark();
-      else if (t === 'castle') c.innerHTML = '<p class="text-gray-400">🏰 Замок (в разработке)</p>';
+      if(t==='home') renderHome();
+      else if(t==='allcats') renderAllCats();
+      else if(t==='breeding') renderBreeding();
+      else if(t==='shop') renderShop();
+      else if(t==='park') renderPark();
+      else if(t==='castle') renderCastle();
     }
 
     async function getNextIdNumber() {
       const snap = await db.collection('cats').where('owner','==',currentUser.uid).get();
-      return String(snap.size + 1).padStart(4,'0');
+      return String(snap.size+1).padStart(4,'0');
     }
 
     // Дом
     function renderHome() {
       const cont = document.getElementById('tab-content');
-      cont.innerHTML = '<p>Загрузка...</p>';
-      db.collection('cats').where('owner','==',currentUser.uid).onSnapshot(snap => {
+      cont.innerHTML='<p>Загрузка...</p>';
+      db.collection('cats').where('owner','==',currentUser.uid).onSnapshot(snap=>{
         const owned = snap.size;
         let html = '<div class="flex flex-wrap gap-3">';
-        snap.forEach(doc => {
+        snap.forEach(doc=>{
           const c = doc.data();
           html += `<div class="cat-card bg-gray-700 p-3 rounded-lg w-44">
             <span class="cat-link cursor-pointer text-blue-300" data-cat-id="${doc.id}">🐱 ${c.name}</span>
@@ -366,31 +369,28 @@
             <div class="text-xs">${c.age}</div><div class="text-xs text-pink-300">${c.state}</div></div>`;
         });
         html += '</div>';
-        if (!snap.size) html += '<p class="text-gray-400">Нет котов</p>';
-        let btnText = '', dis = false;
-        if (owned===0) btnText='Купить кота (бесплатно)';
-        else if (owned===1) btnText='Купить кота (10 монет)';
-        else if (owned===2) btnText='Купить кота (100 монет)';
+        if(!snap.size) html += '<p class="text-gray-400">Нет котов</p>';
+        let btnText='', dis=false;
+        if(owned===0) btnText='Купить кота (бесплатно)';
+        else if(owned===1) btnText='Купить кота (10 монет)';
+        else if(owned===2) btnText='Купить кота (100 монет)';
         else { btnText='Заблокировано'; dis=true; }
         html += `<button id="buy-cat-btn" class="btn btn-pink mt-3" ${dis?'disabled':''}>${btnText}</button>`;
         cont.innerHTML = html;
-        if (!dis) document.getElementById('buy-cat-btn')?.addEventListener('click', openChooseCatModal);
+        if(!dis) document.getElementById('buy-cat-btn')?.addEventListener('click', openChooseCatModal);
       });
     }
 
     function renderAllCats() {
       const cont = document.getElementById('tab-content');
-      cont.innerHTML = '<p>Загрузка...</p>';
-      db.collection('cats').onSnapshot(snap => {
+      cont.innerHTML='<p>Загрузка...</p>';
+      db.collection('cats').onSnapshot(snap=>{
         let html = '<div class="flex flex-wrap gap-3">';
-        snap.forEach(doc => {
+        snap.forEach(doc=>{
           const c = doc.data();
-          html += `<div class="bg-gray-700 p-3 rounded-lg w-44">
-            <span class="cat-link cursor-pointer text-blue-300" data-cat-id="${doc.id}">🐱 ${c.name}</span>
-            <div class="text-xs text-gray-400">{${c.gender==='male'?'мальчик':'девочка'}}</div></div>`;
+          html += `<div class="bg-gray-700 p-3 rounded-lg w-44"><span class="cat-link cursor-pointer text-blue-300" data-cat-id="${doc.id}">🐱 ${c.name}</span><div class="text-xs text-gray-400">{${c.gender==='male'?'мальчик':'девочка'}}</div></div>`;
         });
-        html += '</div>';
-        cont.innerHTML = html;
+        html += '</div>'; cont.innerHTML=html;
       });
     }
 
@@ -399,20 +399,17 @@
       const modal = document.getElementById('choose-cat-modal');
       const content = document.getElementById('choose-cat-modal-content');
       let html = '<h2 class="text-xl font-bold text-pink-300 mb-3">Выберите котёнка</h2><div class="grid grid-cols-3 gap-3">';
-      cats.forEach((cat,i) => {
-        html += `<div class="bg-gray-700 p-3 rounded-lg text-center">
-          <p class="text-lg">🐱</p>
+      cats.forEach((cat,i)=>{
+        html += `<div class="bg-gray-700 p-3 rounded-lg text-center"><p class="text-lg">🐱</p>
           <p><b>Окрас:</b> ${cat.mainColor}${cat.secondaryColor?' + '+cat.secondaryColor:''}</p>
           <p><b>Рисунок:</b> ${cat.pattern}</p>
           <p><b>Глаза:</b> ${typeof cat.eyeColor==='object'?formatEyeColor(cat.eyeColor):cat.eyeColor}</p>
           <p><b>Характер:</b> ${cat.character}</p>
           <button class="btn btn-pink mt-2 choose-cat-btn" data-idx="${i}">Выбрать</button></div>`;
       });
-      html += '</div>';
-      content.innerHTML = html;
-      modal.classList.add('active');
-      window._tempCats = cats;
-      content.querySelectorAll('.choose-cat-btn').forEach(b => b.addEventListener('click', e => {
+      html += '</div>'; content.innerHTML=html; modal.classList.add('active');
+      window._tempCats=cats;
+      content.querySelectorAll('.choose-cat-btn').forEach(b=>b.addEventListener('click', e=>{
         window._chosenCat = window._tempCats[e.target.dataset.idx];
         content.innerHTML = `<h2>Назовите кота</h2>
           <div class="bg-gray-700 p-3 rounded-lg mb-3"><p><b>Окрас:</b> ${window._chosenCat.mainColor}</p>
@@ -427,20 +424,20 @@
 
     async function finalizeCatPurchase() {
       const name = document.getElementById('new-cat-name')?.value.trim();
-      if (!name) return alert('Введите имя');
+      if(!name) return alert('Введите имя');
       const userRef = db.collection('users').doc(currentUser.uid);
       const userDoc = await userRef.get();
       const coins = userDoc.data().coins;
       const catsSnap = await db.collection('cats').where('owner','==',currentUser.uid).get();
       const owned = catsSnap.size;
-      let price = 0;
-      if (owned===0) price=0; else if (owned===1) price=10; else if (owned===2) price=100;
+      let price=0;
+      if(owned===0) price=0; else if(owned===1) price=10; else if(owned===2) price=100;
       else { alert('Больше нельзя'); return; }
-      if (coins < price) return alert('Недостаточно монет');
+      if(coins < price) return alert('Недостаточно монет');
       const newCat = { ...window._chosenCat, owner:currentUser.uid, name, idNumber: await getNextIdNumber(),
         createdAt: firebase.firestore.FieldValue.serverTimestamp() };
       await db.collection('cats').add(newCat);
-      await userRef.update({ coins: coins - price });
+      await userRef.update({ coins: coins-price });
       updateCoinsDisplay();
       document.getElementById('choose-cat-modal').classList.remove('active');
     }
@@ -448,132 +445,165 @@
     // Разведение
     function renderBreeding() {
       const cont = document.getElementById('tab-content');
-      cont.innerHTML = '<p>Загрузка...</p>';
-      db.collection('cats').where('owner','==',currentUser.uid).get().then(snap => {
-        const cats = []; snap.forEach(d => cats.push({id:d.id,...d.data()}));
-        const females = cats.filter(c => c.gender==='female' && c.age!=='котёнок' && !c.isPregnant && c.state==='лежит');
-        const males = cats.filter(c => c.gender==='male' && c.age!=='котёнок' && c.state==='лежит');
-        let html = '<div class="space-y-4">';
-        html += '<select id="mother-select" class="w-full p-2 rounded bg-gray-700"><option value="">Мать</option>';
-        females.forEach(c => html += `<option value="${c.id}">${c.name} [${c.idNumber}]</option>`);
+      cont.innerHTML='<p>Загрузка...</p>';
+      db.collection('cats').where('owner','==',currentUser.uid).get().then(snap=>{
+        const cats = []; snap.forEach(d=>cats.push({id:d.id,...d.data()}));
+        const females = cats.filter(c=>c.gender==='female'&&c.age!=='котёнок'&&!c.isPregnant&&c.state==='лежит');
+        const males = cats.filter(c=>c.gender==='male'&&c.age!=='котёнок'&&c.state==='лежит');
+        let html = '<div class="space-y-4"><select id="mother-select" class="w-full p-2 rounded bg-gray-700"><option value="">Мать</option>';
+        females.forEach(c=>html+=`<option value="${c.id}">${c.name} [${c.idNumber}]</option>`);
         html += '</select><select id="father-select" class="w-full p-2 rounded bg-gray-700"><option value="">Отец</option>';
-        males.forEach(c => html += `<option value="${c.id}">${c.name} [${c.idNumber}]</option>`);
+        males.forEach(c=>html+=`<option value="${c.id}">${c.name} [${c.idNumber}]</option>`);
         html += '</select><button id="breed-btn" class="btn btn-pink">Скрестить 💕</button></div>';
-        cont.innerHTML = html;
+        cont.innerHTML=html;
       });
     }
 
     async function startBreeding() {
       const m = document.getElementById('mother-select')?.value, f = document.getElementById('father-select')?.value;
-      if (!m || !f) return alert('Выберите родителей');
+      if(!m||!f) return alert('Выберите родителей');
       const motherDoc = await db.collection('cats').doc(m).get();
-      if (motherDoc.data().state !== 'лежит') return alert('Кошка занята/устала');
+      if(motherDoc.data().state!=='лежит') return alert('Кошка занята/устала');
       const userRef = db.collection('users').doc(currentUser.uid);
       const userDoc = await userRef.get();
-      if (userDoc.data().coins < 10) return alert('Недостаточно монет');
-      if (!confirm('Потратить 10 монет?')) return;
-      await userRef.update({ coins: userDoc.data().coins - 10 });
-      const end = new Date(Date.now() + 5*60000);
-      await db.collection('cats').doc(m).update({
-        isPregnant:true, state:'беременна', pregnancyEnd: firebase.firestore.Timestamp.fromDate(end) });
+      if(userDoc.data().coins<10) return alert('Недостаточно монет');
+      if(!confirm('Потратить 10 монет?')) return;
+      await userRef.update({ coins: userDoc.data().coins-10 });
+      const end = new Date(Date.now()+5*60000);
+      await db.collection('cats').doc(m).update({ isPregnant:true, state:'беременна', pregnancyEnd: firebase.firestore.Timestamp.fromDate(end) });
       await db.collection('users').doc(currentUser.uid).collection('notifications').add({
         type:'pregnancy_tracking', message:`🐱 ${motherDoc.data().name} беременна`, motherId:m, fatherId:f,
-        pregnancyEnd: firebase.firestore.Timestamp.fromDate(end), read:false,
-        timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+        pregnancyEnd: firebase.firestore.Timestamp.fromDate(end), read:false, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
       updateCoinsDisplay();
       switchTab('breeding');
     }
 
     function formatEyeColor(ec) {
-      if (typeof ec === 'object' && ec.type==='разные') return `разные, ${ec.colors.join(', ')}`;
+      if(typeof ec==='object' && ec.type==='разные') return `разные, ${ec.colors.join(', ')}`;
       return ec;
     }
 
     async function openCatView(catId) {
       const doc = await db.collection('cats').doc(catId).get();
-      if (!doc.exists) return;
+      if(!doc.exists) return;
       const c = doc.data();
-      document.getElementById('cat-modal-content').innerHTML = `
-        <h2>🐱 ${c.name}</h2><p>Пол: {${c.gender==='male'?'мальчик':'девочка'}}</p>
+      let html = `<h2>🐱 ${c.name}</h2><p>Пол: {${c.gender==='male'?'мальчик':'девочка'}}</p>
         <p>ID: [${c.idNumber}]</p><p>Возраст: ${c.age}</p><p>Цвет: ${c.mainColor}${c.secondaryColor?'+'+c.secondaryColor:''}</p>
         <p>Окрас: ${c.pattern}</p><p>Глаза: ${formatEyeColor(c.eyeColor)}</p><p>Характер: ${c.character}</p>
-        <p>Состояние: ${c.state}</p><p>Мутации: ${c.mutations?.join(', ')||'нет'}</p>
-        <button class="btn btn-gray mt-3" onclick="document.getElementById('cat-modal').classList.remove('active')">Закрыть</button>`;
+        <p>Состояние: ${c.state}</p><p>Мутации: ${c.mutations?.join(', ')||'нет'}</p>`;
+      if (c.age === 'котёнок' && c.adultAt) {
+        html += `<p>⌚ Вырастет через: <span class="countdown" id="adult-timer-${catId}"></span></p>`;
+      }
+      if (c.state.startsWith('уставш') && c.tiredUntil) {
+        html += `<p>⌚ Отдохнёт через: <span class="countdown" id="tired-timer-${catId}"></span></p>`;
+      }
+      html += `<div class="flex space-x-2 mt-3">
+        <button class="btn btn-gray" onclick="document.getElementById('cat-modal').classList.remove('active')">Закрыть</button>
+        <button class="btn btn-pink family-tree-btn" data-cat-id="${catId}">🌳 Родословная</button>
+      </div>`;
+      document.getElementById('cat-modal-content').innerHTML = html;
       document.getElementById('cat-modal').classList.add('active');
+
+      if (c.adultAt) {
+        const timerEl = document.getElementById(`adult-timer-${catId}`);
+        if (timerEl) {
+          const update = () => {
+            const diff = c.adultAt.toDate() - new Date();
+            if (diff <= 0) { timerEl.textContent = 'готово'; return; }
+            const m = Math.floor(diff/60000), s = Math.floor((diff%60000)/1000);
+            timerEl.textContent = `${m}:${String(s).padStart(2,'0')}`;
+          };
+          update();
+          const int = setInterval(update, 1000);
+          const observer = new MutationObserver(() => { if (!document.getElementById('cat-modal').classList.contains('active')) { clearInterval(int); observer.disconnect(); } });
+          observer.observe(document.getElementById('cat-modal'), { attributes: true });
+        }
+      }
+      if (c.tiredUntil) {
+        const timerEl = document.getElementById(`tired-timer-${catId}`);
+        if (timerEl) {
+          const update = () => {
+            const diff = c.tiredUntil.toDate() - new Date();
+            if (diff <= 0) { timerEl.textContent = 'готово'; return; }
+            const m = Math.floor(diff/60000), s = Math.floor((diff%60000)/1000);
+            timerEl.textContent = `${m}:${String(s).padStart(2,'0')}`;
+          };
+          update();
+          const int = setInterval(update, 1000);
+          const observer = new MutationObserver(() => { if (!document.getElementById('cat-modal').classList.contains('active')) { clearInterval(int); observer.disconnect(); } });
+          observer.observe(document.getElementById('cat-modal'), { attributes: true });
+        }
+      }
+
+      document.querySelector('.family-tree-btn')?.addEventListener('click', () => showFamilyTree(catId));
     }
 
     function openTrackingModal(endTime) {
       const modal = document.getElementById('tracking-modal');
       const content = document.getElementById('tracking-modal-content');
-      const update = () => {
+      const update = ()=>{
         const diff = endTime - new Date();
-        if (diff <= 0) { content.innerHTML = '<p>Время истекло!</p>'; return; }
+        if(diff<=0){ content.innerHTML='<p>Время истекло!</p>'; return; }
         const m = Math.floor(diff/60000), s = Math.floor((diff%60000)/1000);
         content.innerHTML = `<h2>⏳ Ожидание</h2><p class="countdown">${m}:${String(s).padStart(2,'0')}</p>
           <button class="btn btn-gray mt-2" onclick="document.getElementById('tracking-modal').classList.remove('active')">Закрыть</button>`;
         modal.classList.add('active');
       };
       update();
-      const int = setInterval(() => { if (modal.classList.contains('active')) update(); else clearInterval(int); }, 1000);
+      const int = setInterval(()=>{ if(modal.classList.contains('active')) update(); else clearInterval(int); }, 1000);
     }
 
-    // Роды с несколькими котятами
     async function openBirthModal(motherId, fatherId) {
       const motherDoc = await db.collection('cats').doc(motherId).get();
       const mother = motherDoc.data();
-      const fatherDoc = fatherId !== 'unknown' ? await db.collection('cats').doc(fatherId).get() : null;
+      const fatherDoc = fatherId!=='unknown'? await db.collection('cats').doc(fatherId).get() : null;
       const father = fatherDoc?.exists ? fatherDoc.data() : null;
-      const birthCount = mother.birthCount || 0;
-      const maxK = birthCount===0 ? 3 : 5;
+      const birthCount = mother.birthCount||0;
+      const maxK = birthCount===0?3:5;
       const kittenCount = Math.floor(Math.random()*(maxK-1+1))+1;
       const kittens = [];
-      for (let i=0; i<kittenCount; i++) {
-        if (father) kittens.push(generateKittenFromParents(mother, father));
+      for(let i=0;i<kittenCount;i++){
+        if(father) kittens.push(generateKittenFromParents(mother, father, motherId, fatherId));
         else kittens.push(generateRandomCat());
         kittens[i].idNumber = await getNextIdNumber();
       }
       const modal = document.getElementById('birth-modal');
       const content = document.getElementById('birth-modal-content');
       let html = `<h2>💥 Роды! (${kittenCount} котёнка)</h2><div class="grid grid-cols-3 gap-3">`;
-      kittens.forEach((k,i) => {
-        html += `<div class="bg-gray-700 p-3 rounded-lg text-center" id="kitten-${i}">
-          <p>🐱</p><p>${k.mainColor}</p><p>${k.pattern}</p><p>{${k.gender==='male'?'мальчик':'девочка'}}</p>
-          <button class="btn btn-pink mt-2 select-kitten-btn" data-idx="${i}">Выбрать</button></div>`;
+      kittens.forEach((k,i)=>{
+        html += `<div class="bg-gray-700 p-3 rounded-lg text-center" id="kitten-${i}"><p>🐱</p><p>${k.mainColor}</p><p>${k.pattern}</p><p>{${k.gender==='male'?'мальчик':'девочка'}}</p><button class="btn btn-pink mt-2 select-kitten-btn" data-idx="${i}">Выбрать</button></div>`;
       });
       html += '</div><div id="naming-area" class="mt-3"></div>';
-      content.innerHTML = html;
-      modal.classList.add('active');
-      window._kittens = kittens; window._namedCount = 0; window._kittenNames = new Array(kittenCount).fill('');
-      content.querySelectorAll('.select-kitten-btn').forEach(b => b.addEventListener('click', e => {
-        const idx = e.target.dataset.idx;
-        if (window._kittenNames[idx] !== '') return;
-        document.getElementById('naming-area').innerHTML = `
-          <input id="kitten-name-input" placeholder="Имя" class="w-full p-2 rounded bg-gray-700 mb-2">
-          <button id="name-kitten-btn" class="btn btn-pink">Назвать</button>`;
-        document.getElementById('name-kitten-btn').addEventListener('click', () => {
+      content.innerHTML=html; modal.classList.add('active');
+      window._kittens=kittens; window._namedCount=0; window._kittenNames=new Array(kittenCount).fill('');
+      content.querySelectorAll('.select-kitten-btn').forEach(b=>b.addEventListener('click', e=>{
+        const idx=e.target.dataset.idx;
+        if(window._kittenNames[idx]!=='') return;
+        document.getElementById('naming-area').innerHTML = `<input id="kitten-name-input" placeholder="Имя" class="w-full p-2 rounded bg-gray-700 mb-2"><button id="name-kitten-btn" class="btn btn-pink">Назвать</button>`;
+        document.getElementById('name-kitten-btn').addEventListener('click', ()=>{
           const name = document.getElementById('kitten-name-input').value.trim();
-          if (!name) return alert('Введите имя');
-          window._kittenNames[idx] = name;
+          if(!name) return alert('Введите имя');
+          window._kittenNames[idx]=name;
           window._namedCount++;
           document.getElementById(`kitten-${idx}`).querySelector('.select-kitten-btn').classList.add('hidden');
           document.getElementById(`kitten-${idx}`).innerHTML += `<p class="text-green-400">${name}</p>`;
-          document.getElementById('naming-area').innerHTML = '';
-          if (window._namedCount === kittenCount) {
-            document.getElementById('naming-area').innerHTML = '<button id="finish-birth" class="btn btn-pink mt-3">✅ Завершить</button>';
-            document.getElementById('finish-birth').addEventListener('click', async () => {
-              for (let i=0; i<kittenCount; i++) {
+          document.getElementById('naming-area').innerHTML='';
+          if(window._namedCount===kittenCount){
+            document.getElementById('naming-area').innerHTML='<button id="finish-birth" class="btn btn-pink mt-3">✅ Завершить</button>';
+            document.getElementById('finish-birth').addEventListener('click', async ()=>{
+              for(let i=0;i<kittenCount;i++){
                 window._kittens[i].name = window._kittenNames[i];
                 window._kittens[i].idNumber = await getNextIdNumber();
                 window._kittens[i].owner = currentUser.uid;
                 await db.collection('cats').add(window._kittens[i]);
               }
-              const tiredUntil = new Date(Date.now() + 3*60000);
+              const tiredUntil = new Date(Date.now()+3*60000);
               await db.collection('cats').doc(motherId).update({
                 isPregnant:false, state:'уставшая', pregnancyEnd:null,
                 tiredUntil: firebase.firestore.Timestamp.fromDate(tiredUntil), birthCount: (mother.birthCount||0)+1 });
               const notifs = await db.collection('users').doc(currentUser.uid).collection('notifications')
                 .where('motherId','==',motherId).where('type','==','birth_ready').get();
-              notifs.forEach(d => d.ref.delete());
+              notifs.forEach(d=>d.ref.delete());
               modal.classList.remove('active');
               updateCoinsDisplay();
               switchTab('home');
@@ -583,103 +613,153 @@
       }));
     }
 
+    // Родословная
+    async function showFamilyTree(catId) {
+      const catDoc = await db.collection('cats').doc(catId).get();
+      if (!catDoc.exists) return;
+      const cat = catDoc.data();
+      const motherId = cat.motherId;
+      const fatherId = cat.fatherId;
+      let mother = null, father = null;
+      if (motherId) {
+        const md = await db.collection('cats').doc(motherId).get();
+        if (md.exists) mother = md.data();
+      }
+      if (fatherId) {
+        const fd = await db.collection('cats').doc(fatherId).get();
+        if (fd.exists) father = fd.data();
+      }
+      let html = `<h2>🌳 Родословная ${cat.name}</h2>`;
+      if (mother) {
+        html += `<p>#мама: ${mother.name} (${mother.mainColor})</p>`;
+      } else { html += `<p>#мама: неизвестна</p>`; }
+      if (father) {
+        html += `<p>#папа: ${father.name} (${father.mainColor})</p>`;
+      } else { html += `<p>#папа: неизвестен</p>`; }
+      // Братья/сестры (котята с той же матерью)
+      if (motherId) {
+        const siblingsSnap = await db.collection('cats').where('motherId','==',motherId).get();
+        const siblings = []; siblingsSnap.forEach(d=>{ if(d.id!==catId) siblings.push(d.data()); });
+        if (siblings.length) {
+          html += '<p><b>Братья/сёстры:</b></p>';
+          siblings.forEach(s=> html += `<p>#${s.gender==='male'?'брат':'сестра'}: ${s.name}</p>`);
+        }
+      }
+      // Если есть родители, ищем бабушек/дедушек
+      if (mother?.motherId) {
+        const gm = await db.collection('cats').doc(mother.motherId).get();
+        if (gm.exists) html += `<p>#бабушка (по маме): ${gm.data().name}</p>`;
+      }
+      if (mother?.fatherId) {
+        const gf = await db.collection('cats').doc(mother.fatherId).get();
+        if (gf.exists) html += `<p>#дедушка (по маме): ${gf.data().name}</p>`;
+      }
+      if (father?.motherId) {
+        const gm = await db.collection('cats').doc(father.motherId).get();
+        if (gm.exists) html += `<p>#бабушка (по папе): ${gm.data().name}</p>`;
+      }
+      if (father?.fatherId) {
+        const gf = await db.collection('cats').doc(father.fatherId).get();
+        if (gf.exists) html += `<p>#дедушка (по папе): ${gf.data().name}</p>`;
+      }
+      html += '<button class="btn btn-gray mt-2" onclick="document.getElementById(\'family-tree-modal\').classList.remove(\'active\')">Закрыть</button>';
+      document.getElementById('family-tree-content').innerHTML = html;
+      document.getElementById('family-tree-modal').classList.add('active');
+    }
+
     // Парк
     let parkGameActive = false, parkCatPosition = 0, parkGameInterval = null, selectedParkCatId = null;
     function renderPark() {
       const cont = document.getElementById('tab-content');
-      cont.innerHTML = '<p>Загрузка...</p>';
-      db.collection('cats').where('owner','==',currentUser.uid).get().then(snap => {
-        const cats = []; snap.forEach(d => cats.push({id:d.id,...d.data()}));
-        const adults = cats.filter(c => c.age!=='котёнок' && c.state==='лежит');
-        const kittens = cats.filter(c => c.age==='котёнок');
+      cont.innerHTML='<p>Загрузка...</p>';
+      db.collection('cats').where('owner','==',currentUser.uid).get().then(snap=>{
+        const cats = []; snap.forEach(d=>cats.push({id:d.id,...d.data()}));
+        const adults = cats.filter(c=>c.age!=='котёнок'&&c.state==='лежит');
+        const kittens = cats.filter(c=>c.age==='котёнок');
         let html = '<h3>Отправить кота на прогулку</h3>';
-        if (!adults.length && !kittens.length) html += '<p>Нет доступных котов</p>';
+        if(!adults.length&&!kittens.length) html+='<p>Нет доступных котов</p>';
         else {
           html += '<select id="park-cat-select" class="w-full p-2 rounded bg-gray-700 mb-2"><option value="">-- выберите --</option>';
-          adults.forEach(c => html += `<option value="${c.id}">${c.name} (взрослый)</option>`);
-          kittens.forEach(c => html += `<option value="${c.id}">${c.name} (котёнок)</option>`);
+          adults.forEach(c=>html+=`<option value="${c.id}">${c.name} (взрослый)</option>`);
+          kittens.forEach(c=>html+=`<option value="${c.id}">${c.name} (котёнок)</option>`);
           html += '</select><button id="start-walk-btn" class="btn btn-pink">Гулять!</button>';
         }
-        cont.innerHTML = html;
+        cont.innerHTML=html;
         document.getElementById('start-walk-btn')?.addEventListener('click', startWalkCheck);
       });
     }
 
     async function startWalkCheck() {
       const catId = document.getElementById('park-cat-select')?.value;
-      if (!catId) return alert('Выберите кота');
+      if(!catId) return alert('Выберите кота');
       const catDoc = await db.collection('cats').doc(catId).get();
       const cat = catDoc.data();
-      if (cat.state === 'беременна' || cat.state.startsWith('уставш')) return alert('Ваш кот слишком устал чтобы гулять');
-      if (cat.age === 'котёнок') {
-        const adults = await db.collection('cats').where('owner','==',currentUser.uid)
-          .where('age','!=','котёнок').where('state','==','лежит').get();
-        if (adults.empty) return alert('Котёнок слишком маленький чтобы гулять одному');
+      if(cat.state==='беременна'||cat.state.startsWith('уставш')) return alert('Ваш кот слишком устал чтобы гулять');
+      if(cat.age==='котёнок'){
+        const adults = await db.collection('cats').where('owner','==',currentUser.uid).where('age','!=','котёнок').where('state','==','лежит').get();
+        if(adults.empty) return alert('Котёнок слишком маленький чтобы гулять одному');
       }
       selectedParkCatId = catId;
       startParkMiniGame();
     }
 
     function startParkMiniGame() {
-      parkGameActive = true;
+      parkGameActive=true;
       const modal = document.getElementById('park-game-modal');
       const content = document.getElementById('park-game-content');
-      content.innerHTML = `<h3>Поймайте кота на зелёной зоне!</h3>
-        <div id="park-game-area" class="park-game relative cursor-pointer">
-          <div class="park-zone"></div><div id="park-cat" class="park-cat">🐱</div></div>`;
+      content.innerHTML = `<h3>Поймайте кота на зелёной зоне!</h3><div id="park-game-area" class="park-game relative cursor-pointer"><div class="park-zone"></div><div id="park-cat" class="park-cat">🐱</div></div>`;
       modal.classList.add('active');
       const area = document.getElementById('park-game-area');
       const catEl = document.getElementById('park-cat');
-      let pos = 10, dir = 1;
-      parkCatPosition = pos;
-      parkGameInterval = setInterval(() => {
-        pos += dir * 4;
-        if (pos > 90 || pos < 10) dir *= -1;
-        parkCatPosition = pos;
-        catEl.style.left = pos + '%';
-      }, 50);
+      let pos=10, dir=1;
+      parkCatPosition=pos;
+      parkGameInterval = setInterval(()=>{
+        pos+=dir*4;
+        if(pos>90||pos<10) dir*=-1;
+        parkCatPosition=pos;
+        catEl.style.left=pos+'%';
+      },50);
       area.addEventListener('click', handleParkClick);
     }
 
     function handleParkClick() {
-      if (!parkGameActive) return;
+      if(!parkGameActive) return;
       clearInterval(parkGameInterval);
-      parkGameActive = false;
+      parkGameActive=false;
       const area = document.getElementById('park-game-area');
       area.removeEventListener('click', handleParkClick);
       const modal = document.getElementById('park-game-modal');
-      if (parkCatPosition >= 45 && parkCatPosition <= 55) {
+      if(parkCatPosition>=45 && parkCatPosition<=55){
         modal.classList.remove('active');
         startWalkSuccess();
       } else {
         modal.classList.remove('active');
         alert('Коту не удалось поймать момент. Попробуйте снова!');
-        // кот не устаёт, остаётся в прежнем состоянии
-        selectedParkCatId = null;
+        selectedParkCatId=null;
       }
     }
 
     async function startWalkSuccess() {
       const catId = selectedParkCatId;
       await db.collection('cats').doc(catId).update({ state:'гуляет' });
-      const returnTime = new Date(Date.now() + 2*60000);
+      const returnTime = new Date(Date.now()+2*60000);
       await db.collection('users').doc(currentUser.uid).collection('notifications').add({
         type:'walking', message:`🐱 Кот гуляет и вернётся через 2 минуты`, catId,
         returnTime: firebase.firestore.Timestamp.fromDate(returnTime), read:false,
         timestamp: firebase.firestore.FieldValue.serverTimestamp() });
-      selectedParkCatId = null;
+      selectedParkCatId=null;
       switchTab('park');
     }
 
     async function checkWalkingReturns() {
       const notifs = await db.collection('users').doc(currentUser.uid).collection('notifications')
         .where('type','==','walking').where('read','==',false).get();
-      notifs.forEach(async d => {
+      notifs.forEach(async d=>{
         const data = d.data();
-        if (data.returnTime.toDate() <= new Date()) {
-          const ex = await db.collection('users').doc(currentUser.uid).collection('notifications')
+        if(data.returnTime.toDate() <= new Date()){
+          const exist = await db.collection('users').doc(currentUser.uid).collection('notifications')
             .where('catId','==',data.catId).where('type','==','walk_return').get();
-          if (ex.empty) {
+          if(exist.empty){
             await db.collection('users').doc(currentUser.uid).collection('notifications').add({
               type:'walk_return', message:`🚪 Кот вернулся!`, catId:data.catId, read:false,
               timestamp: firebase.firestore.FieldValue.serverTimestamp() });
@@ -692,23 +772,21 @@
     async function openDoor(catId) {
       const rand = Math.random()*100;
       const catDoc = await db.collection('cats').doc(catId).get();
-      if (rand < 5) {
-        const kitten = generateRandomCat(); kitten.owner = currentUser.uid; kitten.age = 'котёнок';
-        kitten.idNumber = await getNextIdNumber();
-        document.getElementById('birth-modal-content').innerHTML = `<h2>🎉 Найден котёнок!</h2>
-          <p>Пол: {${kitten.gender==='male'?'мальчик':'девочка'}}</p>
+      if(rand<5){
+        const kitten = generateRandomCat(); kitten.owner=currentUser.uid; kitten.age='котёнок'; kitten.idNumber=await getNextIdNumber();
+        document.getElementById('birth-modal-content').innerHTML = `<h2>🎉 Найден котёнок!</h2><p>Пол: {${kitten.gender==='male'?'мальчик':'девочка'}}</p>
           <input id="kitten-name" placeholder="Имя" class="w-full p-2 rounded bg-gray-700 mb-2">
           <button id="save-kitten" class="btn btn-pink">Забрать</button>`;
         document.getElementById('birth-modal').classList.add('active');
-        document.getElementById('save-kitten').addEventListener('click', async () => {
+        document.getElementById('save-kitten').addEventListener('click', async ()=>{
           const name = document.getElementById('kitten-name').value.trim();
-          if (!name) return alert('Введите имя');
-          kitten.name = name;
+          if(!name) return alert('Введите имя');
+          kitten.name=name;
           await db.collection('cats').add(kitten);
           await finishWalk(catId);
           document.getElementById('birth-modal').classList.remove('active');
         });
-      } else if (rand < 70) {
+      } else if(rand<70){
         await db.collection('users').doc(currentUser.uid).collection('inventory').add({ type:'ball', name:'Мячик' });
         await finishWalk(catId);
         alert('Кот принёс Мячик!');
@@ -720,35 +798,90 @@
     }
 
     async function finishWalk(catId) {
-      const tiredUntil = new Date(Date.now() + 3*60000);
+      const tiredUntil = new Date(Date.now()+3*60000);
       await db.collection('cats').doc(catId).update({ state:'уставший', tiredUntil: firebase.firestore.Timestamp.fromDate(tiredUntil) });
       const notifs = await db.collection('users').doc(currentUser.uid).collection('notifications')
         .where('catId','==',catId).where('type','==','walk_return').get();
-      notifs.forEach(d => d.ref.delete());
+      notifs.forEach(d=>d.ref.delete());
       updateCoinsDisplay();
     }
 
-    // Инвентарь и магазин остаются практически без изменений
-    document.getElementById('inventory-btn').addEventListener('click', async () => {
+    // Замок
+    function renderCastle() {
+      const cont = document.getElementById('tab-content');
+      cont.innerHTML=`<h3 class="text-lg font-bold mb-2">🏰 Замок — экспедиции за сокровищами</h3>
+        <p class="mb-2 text-sm text-gray-400">Отправьте взрослого свободного кота в замок за редкими предметами. Время экспедиции 3 минуты.</p>
+        <select id="castle-cat-select" class="w-full p-2 rounded bg-gray-700 mb-2"><option value="">-- выберите кота --</option></select>
+        <button id="start-expedition-btn" class="btn btn-pink">Отправиться</button>`;
+      db.collection('cats').where('owner','==',currentUser.uid).where('age','!=','котёнок').where('state','==','лежит').get().then(snap=>{
+        const sel = document.getElementById('castle-cat-select');
+        snap.forEach(doc=>{ const c=doc.data(); sel.innerHTML+=`<option value="${doc.id}">${c.name}</option>`; });
+      });
+      document.getElementById('start-expedition-btn').addEventListener('click', async ()=>{
+        const catId = document.getElementById('castle-cat-select').value;
+        if(!catId) return alert('Выберите кота');
+        await db.collection('cats').doc(catId).update({ state:'в экспедиции' });
+        const returnTime = new Date(Date.now()+3*60000);
+        await db.collection('users').doc(currentUser.uid).collection('notifications').add({
+          type:'castle_expedition', message:`🏰 Экспедиция завершена! Нажмите, чтобы забрать награду.`, catId,
+          returnTime: firebase.firestore.Timestamp.fromDate(returnTime), read:false,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+        alert('Кот отправлен в замок!');
+        switchTab('castle');
+      });
+    }
+
+    async function checkCastleReturns() {
+      const notifs = await db.collection('users').doc(currentUser.uid).collection('notifications')
+        .where('type','==','castle_expedition').where('read','==',false).get();
+      notifs.forEach(async d=>{
+        const data = d.data();
+        if(data.returnTime.toDate() <= new Date()){
+          const rewards = [
+            { type:'item', itemType:'golden_fish', name:'Золотая рыбка', desc:'Мгновенно завершает текущую беременность кошки' },
+            { type:'item', itemType:'catnip', name:'Кошачья мята', desc:'Снимает усталость и даёт +10 монет' },
+            { type:'item', itemType:'amulet', name:'Амулет удачи', desc:'Увеличивает шанс редкого окраса у котят на 20% (одноразово)' },
+            { type:'item', itemType:'collar', name:'Ошейник силы', desc:'Кот не устаёт после прогулок 2 раза' },
+            { type:'item', itemType:'crystal', name:'Магический кристалл', desc:'Позволяет один раз переименовать кота' },
+            { type:'coins', amount: 50, name:'Мешочек монет', desc:'50 монет' }
+          ];
+          const reward = rewards[Math.floor(Math.random()*rewards.length)];
+          if(reward.type==='coins'){
+            const userRef = db.collection('users').doc(currentUser.uid);
+            const userDoc = await userRef.get();
+            await userRef.update({ coins: userDoc.data().coins+reward.amount });
+            alert(`Экспедиция принесла ${reward.name}!`);
+          } else {
+            await db.collection('users').doc(currentUser.uid).collection('inventory').add(reward);
+            alert(`Экспедиция принесла предмет: ${reward.name} — ${reward.desc}`);
+          }
+          const tiredUntil = new Date(Date.now()+3*60000);
+          await db.collection('cats').doc(data.catId).update({ state:'уставший', tiredUntil: firebase.firestore.Timestamp.fromDate(tiredUntil) });
+          d.ref.delete();
+        }
+      });
+    }
+
+    // Инвентарь
+    document.getElementById('inventory-btn').addEventListener('click', async ()=>{
       const modal = document.getElementById('inventory-modal');
       const content = document.getElementById('inventory-modal-content');
       const invSnap = await db.collection('users').doc(currentUser.uid).collection('inventory').get();
       let html = '<h2>🎒 Инвентарь</h2>';
-      if (invSnap.empty) html += '<p>Пусто</p>';
-      invSnap.forEach(doc => {
+      if(invSnap.empty) html+='<p>Пусто</p>';
+      invSnap.forEach(doc=>{
         const it = doc.data();
         html += `<div class="bg-gray-700 p-2 rounded mb-2 flex justify-between"><span>${it.name}</span>
-          <div><button class="text-blue-400 mr-2 item-use-btn" data-item-id="${doc.id}" data-type="${it.type}">👁</button>
+          <div><button class="text-blue-400 mr-2 item-use-btn" data-item-id="${doc.id}" data-type="${it.itemType}">👁</button>
           <button class="text-red-400 item-delete-btn" data-item-id="${doc.id}">❌</button></div></div>`;
       });
       html += '<button class="btn btn-gray mt-2" onclick="document.getElementById(\'inventory-modal\').classList.remove(\'active\')">Закрыть</button>';
-      content.innerHTML = html;
-      modal.classList.add('active');
-      content.querySelectorAll('.item-delete-btn').forEach(b => b.addEventListener('click', async e => {
+      content.innerHTML=html; modal.classList.add('active');
+      content.querySelectorAll('.item-delete-btn').forEach(b=>b.addEventListener('click', async e=>{
         await db.collection('users').doc(currentUser.uid).collection('inventory').doc(e.target.dataset.itemId).delete();
         document.getElementById('inventory-btn').click();
       }));
-      content.querySelectorAll('.item-use-btn').forEach(b => b.addEventListener('click', e => {
+      content.querySelectorAll('.item-use-btn').forEach(b=>b.addEventListener('click', e=>{
         openItemUseModal(e.target.dataset.itemId, e.target.dataset.type);
       }));
     });
@@ -757,28 +890,38 @@
       const modal = document.getElementById('item-use-modal');
       const content = document.getElementById('item-use-modal-content');
       let catsSnap;
-      if (type==='ball') catsSnap = await db.collection('cats').where('owner','==',currentUser.uid).where('state','in',['уставшая','уставший']).get();
-      else catsSnap = await db.collection('cats').where('owner','==',currentUser.uid).where('isPregnant','==',true).get();
+      if(type==='ball'||type==='catnip') catsSnap = await db.collection('cats').where('owner','==',currentUser.uid).where('state','in',['уставшая','уставший']).get();
+      else if(type==='accelerator'||type==='golden_fish') catsSnap = await db.collection('cats').where('owner','==',currentUser.uid).where('isPregnant','==',true).get();
+      else if(type==='crystal') catsSnap = await db.collection('cats').where('owner','==',currentUser.uid).get();
+      else catsSnap = await db.collection('cats').where('owner','==',currentUser.uid).get();
       let html = '<h3>Выберите кота</h3>';
-      if (catsSnap.empty) html += '<p>Нет подходящих</p>';
-      catsSnap.forEach(doc => {
+      if(catsSnap.empty) html+='<p>Нет подходящих</p>';
+      catsSnap.forEach(doc=>{
         const c = doc.data();
         html += `<div class="bg-gray-700 p-2 rounded mb-2 flex justify-between"><span>${c.name}</span>
           <button class="btn btn-pink use-on-cat-btn" data-cat-id="${doc.id}" data-item-id="${itemId}" data-type="${type}">✅</button></div>`;
       });
       html += '<button class="btn btn-gray" onclick="document.getElementById(\'item-use-modal\').classList.remove(\'active\')">Закрыть</button>';
-      content.innerHTML = html;
-      modal.classList.add('active');
-      content.querySelectorAll('.use-on-cat-btn').forEach(b => b.addEventListener('click', async e => {
+      content.innerHTML=html; modal.classList.add('active');
+      content.querySelectorAll('.use-on-cat-btn').forEach(b=>b.addEventListener('click', async e=>{
         const catId = e.target.dataset.catId, itId = e.target.dataset.itemId, itType = e.target.dataset.type;
-        if (itType==='ball') {
+        if(itType==='ball'||itType==='catnip'){
           await db.collection('cats').doc(catId).update({ state:'лежит', tiredUntil:null });
+          if(itType==='catnip'){
+            const userRef = db.collection('users').doc(currentUser.uid);
+            const udoc = await userRef.get();
+            await userRef.update({ coins: udoc.data().coins+10 });
+          }
           alert('Кот больше не уставший!');
-        } else {
+        } else if(itType==='accelerator'||itType==='golden_fish'){
           await db.collection('users').doc(currentUser.uid).collection('inventory').doc(itId).delete();
           openBirthModal(catId, 'unknown');
           modal.classList.remove('active');
           return;
+        } else if(itType==='crystal'){
+          const newName = prompt('Введите новое имя кота:');
+          if(newName) await db.collection('cats').doc(catId).update({ name: newName });
+          alert('Имя изменено!');
         }
         await db.collection('users').doc(currentUser.uid).collection('inventory').doc(itId).delete();
         modal.classList.remove('active');
@@ -788,13 +931,11 @@
 
     function renderShop() {
       document.getElementById('tab-content').innerHTML = `
-        <div class="flex space-x-2 mb-3">
-          <button class="shop-tab-btn btn bg-gray-700" data-shop="buy">Купить</button>
-          <button class="shop-tab-btn btn bg-gray-700" data-shop="sell">Продать</button>
-          <button class="shop-tab-btn btn bg-gray-700" data-shop="my">Мои лоты</button>
-        </div><div id="shop-content"></div>`;
-      document.querySelectorAll('.shop-tab-btn').forEach(b => b.addEventListener('click', () => {
-        document.querySelectorAll('.shop-tab-btn').forEach(b => b.classList.remove('bg-pink-600'));
+        <div class="flex space-x-2 mb-3"><button class="shop-tab-btn btn bg-gray-700" data-shop="buy">Купить</button>
+        <button class="shop-tab-btn btn bg-gray-700" data-shop="sell">Продать</button>
+        <button class="shop-tab-btn btn bg-gray-700" data-shop="my">Мои лоты</button></div><div id="shop-content"></div>`;
+      document.querySelectorAll('.shop-tab-btn').forEach(b=>b.addEventListener('click', ()=>{
+        document.querySelectorAll('.shop-tab-btn').forEach(b=>b.classList.remove('bg-pink-600'));
         b.classList.add('bg-pink-600');
         renderShopTab(b.dataset.shop);
       }));
@@ -803,128 +944,135 @@
 
     async function renderShopTab(tab) {
       const area = document.getElementById('shop-content');
-      if (tab==='buy') {
+      if(tab==='buy'){
         const sales = await db.collection('sales').where('active','==',true).get();
         let html = '<h3>Коты и предметы на продажу</h3>';
-        sales.forEach(d => {
+        sales.forEach(d=>{
           const s = d.data();
-          html += `<div class="bg-gray-700 p-2 rounded mb-2 flex justify-between"><span>${s.type==='cat'?`🐱 ${s.catName}`:`📦 ${s.itemName}`} - ${s.price} монет</span>
-            <button class="btn btn-pink buy-btn" data-sale-id="${d.id}">Купить</button></div>`;
+          html += `<div class="bg-gray-700 p-2 rounded mb-2 flex justify-between"><span>${s.type==='cat'?`🐱 ${s.catName}`:`📦 ${s.itemName}`} - ${s.price} монет</span><button class="btn btn-pink buy-btn" data-sale-id="${d.id}">Купить</button></div>`;
         });
-        area.innerHTML = html || '<p>Ничего нет</p>';
-        area.querySelectorAll('.buy-btn').forEach(b => b.addEventListener('click', async e => {
+        area.innerHTML = html||'<p>Ничего нет</p>';
+        area.querySelectorAll('.buy-btn').forEach(b=>b.addEventListener('click', async e=>{
           const saleId = e.target.dataset.saleId;
           const saleDoc = await db.collection('sales').doc(saleId).get();
-          if (!saleDoc.exists || !saleDoc.data().active) return alert('Лот неактуален');
+          if(!saleDoc.exists || !saleDoc.data().active) return alert('Лот неактуален');
           const sale = saleDoc.data();
           const buyerRef = db.collection('users').doc(currentUser.uid);
           const buyerDoc = await buyerRef.get();
-          if (buyerDoc.data().coins < sale.price) return alert('Недостаточно монет');
+          if(buyerDoc.data().coins < sale.price) return alert('Недостаточно монет');
           await buyerRef.update({ coins: buyerDoc.data().coins - sale.price });
-          if (sale.type==='cat') {
+          if(sale.type==='cat'){
             await db.collection('cats').doc(sale.catId).update({ owner: currentUser.uid });
           } else {
             await db.collection('users').doc(currentUser.uid).collection('inventory').add({ type:sale.itemType, name:sale.itemName });
           }
           await db.collection('sales').doc(saleId).update({ active:false });
           await db.collection('users').doc(sale.sellerId).collection('notifications').add({
-            type:'sale_complete', message:`Куплен за ${sale.price} монет`, read:false,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+            type:'sale_complete', message:`Куплен за ${sale.price} монет`, read:false, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
           alert('Успешно!');
           renderShopTab('buy');
         }));
-      } else if (tab==='sell') {
+      } else if(tab==='sell'){
         const myCats = await db.collection('cats').where('owner','==',currentUser.uid).get();
         const inv = await db.collection('users').doc(currentUser.uid).collection('inventory').get();
         let html = '<h3>Продать кота</h3><select id="sell-cat-select" class="w-full p-2 rounded bg-gray-700 mb-2"><option value="">--</option>';
-        myCats.forEach(d => html += `<option value="${d.id}">${d.data().name}</option>`);
+        myCats.forEach(d=> html+=`<option value="${d.id}">${d.data().name}</option>`);
         html += '</select><input id="cat-price" type="number" placeholder="Цена" class="w-full p-2 rounded bg-gray-700 mb-2"><button id="sell-cat-btn" class="btn btn-pink mb-3">Продать</button>';
         html += '<h3>Продать предмет</h3><select id="sell-item-select" class="w-full p-2 rounded bg-gray-700 mb-2"><option value="">--</option>';
-        inv.forEach(d => { const it = d.data(); html += `<option value="${d.id}">${it.name}</option>`; });
+        inv.forEach(d=>{ const it=d.data(); html+=`<option value="${d.id}">${it.name}</option>`; });
         html += '</select><input id="item-price" type="number" placeholder="Цена" class="w-full p-2 rounded bg-gray-700 mb-2"><button id="sell-item-btn" class="btn btn-pink">Продать</button>';
         area.innerHTML = html;
-        document.getElementById('sell-cat-btn')?.addEventListener('click', async () => {
-          const catId = document.getElementById('sell-cat-select').value;
-          const price = parseInt(document.getElementById('cat-price').value);
-          if (!catId || !price) return alert('Заполните');
+        document.getElementById('sell-cat-btn')?.addEventListener('click', async ()=>{
+          const catId = document.getElementById('sell-cat-select').value, price = parseInt(document.getElementById('cat-price').value);
+          if(!catId||!price) return alert('Заполните');
           const catDoc = await db.collection('cats').doc(catId).get();
           await db.collection('sales').add({ type:'cat', catId, catName:catDoc.data().name, sellerId:currentUser.uid, price, active:true });
           alert('Лот создан'); renderShopTab('sell');
         });
-        document.getElementById('sell-item-btn')?.addEventListener('click', async () => {
-          const itemId = document.getElementById('sell-item-select').value;
-          const price = parseInt(document.getElementById('item-price').value);
-          if (!itemId || !price) return alert('Заполните');
+        document.getElementById('sell-item-btn')?.addEventListener('click', async ()=>{
+          const itemId = document.getElementById('sell-item-select').value, price = parseInt(document.getElementById('item-price').value);
+          if(!itemId||!price) return alert('Заполните');
           const itemDoc = await db.collection('users').doc(currentUser.uid).collection('inventory').doc(itemId).get();
           await db.collection('sales').add({ type:'item', itemType:itemDoc.data().type, itemName:itemDoc.data().name, sellerId:currentUser.uid, price, active:true });
           await itemDoc.ref.delete();
           alert('Лот создан'); renderShopTab('sell');
         });
-      } else if (tab==='my') {
+      } else if(tab==='my'){
         const mySales = await db.collection('sales').where('sellerId','==',currentUser.uid).where('active','==',true).get();
         let html = '<h3>Мои лоты</h3>';
-        mySales.forEach(d => { const s = d.data(); html += `<div class="bg-gray-700 p-2 rounded mb-2">${s.type==='cat'?`🐱 ${s.catName}`:`📦 ${s.itemName}`} - ${s.price} монет</div>`; });
-        area.innerHTML = html || '<p>Нет активных лотов</p>';
+        mySales.forEach(d=>{ const s=d.data(); html+=`<div class="bg-gray-700 p-2 rounded mb-2">${s.type==='cat'?`🐱 ${s.catName}`:`📦 ${s.itemName}`} - ${s.price} монет</div>`; });
+        area.innerHTML = html||'<p>Нет активных лотов</p>';
       }
     }
 
     // Глобальное делегирование
-    document.addEventListener('click', e => {
-      if (e.target.classList.contains('modal')) { e.target.classList.remove('active'); return; }
+    document.addEventListener('click', e=>{
+      if(e.target.classList.contains('modal')){ e.target.classList.remove('active'); return; }
       const catLink = e.target.closest('[data-cat-id]');
-      if (catLink) { openCatView(catLink.dataset.catId); return; }
-      if (e.target.id === 'breed-btn') { startBreeding(); return; }
+      if(catLink){ openCatView(catLink.dataset.catId); return; }
+      if(e.target.id==='breed-btn'){ startBreeding(); return; }
       const birthAction = e.target.closest('[data-action="accept-birth"]');
-      if (birthAction) { document.getElementById('message-modal').classList.remove('active'); openBirthModal(birthAction.dataset.motherId, birthAction.dataset.fatherId); return; }
+      if(birthAction){ document.getElementById('message-modal').classList.remove('active'); openBirthModal(birthAction.dataset.motherId, birthAction.dataset.fatherId); return; }
       const trackAction = e.target.closest('[data-action="track-pregnancy"]');
-      if (trackAction) { document.getElementById('message-modal').classList.remove('active'); openTrackingModal(new Date(trackAction.dataset.end)); return; }
+      if(trackAction){ document.getElementById('message-modal').classList.remove('active'); openTrackingModal(new Date(trackAction.dataset.end)); return; }
       const walkTrack = e.target.closest('[data-action="track-walking"]');
-      if (walkTrack) { document.getElementById('message-modal').classList.remove('active'); openTrackingModal(new Date(walkTrack.dataset.end)); return; }
+      if(walkTrack){ document.getElementById('message-modal').classList.remove('active'); openTrackingModal(new Date(walkTrack.dataset.end)); return; }
       const doorAction = e.target.closest('[data-action="open-door"]');
-      if (doorAction) { document.getElementById('message-modal').classList.remove('active'); openDoor(doorAction.dataset.catId); return; }
+      if(doorAction){ document.getElementById('message-modal').classList.remove('active'); openDoor(doorAction.dataset.catId); return; }
+      const castleAction = e.target.closest('[data-action="castle-reward"]');
+      if(castleAction){ document.getElementById('message-modal').classList.remove('active'); checkCastleReturns(); return; }
     });
 
-    document.getElementById('msg-btn').addEventListener('click', async () => {
+    // Уведомления
+    document.getElementById('msg-btn').addEventListener('click', async ()=>{
       const modal = document.getElementById('message-modal');
       const content = document.getElementById('message-modal-content');
       const notifs = await db.collection('users').doc(currentUser.uid).collection('notifications').where('read','==',false).get();
-      let html = '<h2>📬 Уведомления</h2>';
-      notifs.forEach(doc => {
+      let html = '<div class="flex justify-between items-center mb-2"><h2>📬 Уведомления</h2><button id="clear-all-btn" class="text-red-400 text-sm">🗑 Очистить все</button></div>';
+      notifs.forEach(doc=>{
         const n = doc.data();
         html += `<div class="bg-gray-700 p-2 rounded mb-2 flex justify-between"><span>${n.message}</span>`;
-        if (n.type==='pregnancy_tracking') html += `<button data-action="track-pregnancy" data-end="${n.pregnancyEnd.toDate().toISOString()}" class="text-blue-400">👁</button>`;
-        else if (n.type==='birth_ready') html += `<button data-action="accept-birth" data-mother-id="${n.motherId}" data-father-id="${n.fatherId}" class="text-pink-400">💥</button>`;
-        else if (n.type==='walking') html += `<button data-action="track-walking" data-end="${n.returnTime.toDate().toISOString()}" class="text-blue-400">👁</button>`;
-        else if (n.type==='walk_return') html += `<button data-action="open-door" data-cat-id="${n.catId}" class="text-green-400">🚪</button>`;
+        if(n.type==='pregnancy_tracking') html += `<button data-action="track-pregnancy" data-end="${n.pregnancyEnd.toDate().toISOString()}" class="text-blue-400">👁</button>`;
+        else if(n.type==='birth_ready') html += `<button data-action="accept-birth" data-mother-id="${n.motherId}" data-father-id="${n.fatherId}" class="text-pink-400">💥</button>`;
+        else if(n.type==='walking') html += `<button data-action="track-walking" data-end="${n.returnTime.toDate().toISOString()}" class="text-blue-400">👁</button>`;
+        else if(n.type==='walk_return') html += `<button data-action="open-door" data-cat-id="${n.catId}" class="text-green-400">🚪</button>`;
+        else if(n.type==='castle_expedition') html += `<button data-action="castle-reward" class="text-yellow-400">🏰</button>`;
         html += `</div>`;
       });
       html += '<button class="btn btn-gray mt-2" onclick="document.getElementById(\'message-modal\').classList.remove(\'active\')">Закрыть</button>';
       content.innerHTML = html;
       modal.classList.add('active');
+      document.getElementById('clear-all-btn')?.addEventListener('click', async ()=>{
+        const batch = db.batch();
+        notifs.forEach(d=>batch.delete(d.ref));
+        await batch.commit();
+        document.getElementById('message-modal').classList.remove('active');
+        document.getElementById('msg-badge').classList.add('hidden');
+      });
     });
 
-    setInterval(async () => {
-      if (!currentUser) return;
+    // Периодическая проверка
+    setInterval(async ()=>{
+      if(!currentUser) return;
       const now = new Date();
       const preg = await db.collection('cats').where('owner','==',currentUser.uid).where('isPregnant','==',true).get();
-      preg.forEach(async doc => {
-        if (doc.data().pregnancyEnd?.toDate() <= now) {
-          const exist = await db.collection('users').doc(currentUser.uid).collection('notifications')
-            .where('motherId','==',doc.id).where('type','==','birth_ready').get();
-          if (exist.empty) {
+      preg.forEach(async doc=>{
+        if(doc.data().pregnancyEnd?.toDate() <= now){
+          const exist = await db.collection('users').doc(currentUser.uid).collection('notifications').where('motherId','==',doc.id).where('type','==','birth_ready').get();
+          if(exist.empty){
             await db.collection('users').doc(currentUser.uid).collection('notifications').add({
-              type:'birth_ready', message:`💥 ${doc.data().name} готова родить!`, motherId:doc.id, fatherId:'unknown',
-              read:false, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+              type:'birth_ready', message:`💥 ${doc.data().name} готова родить!`, motherId:doc.id, fatherId:'unknown', read:false, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
           }
         }
       });
       const tired = await db.collection('cats').where('owner','==',currentUser.uid).where('tiredUntil','!=',null).get();
-      tired.forEach(async doc => { if (doc.data().tiredUntil?.toDate() <= now) await doc.ref.update({ state:'лежит', tiredUntil:null }); });
+      tired.forEach(async doc=>{ if(doc.data().tiredUntil?.toDate() <= now) await doc.ref.update({ state:'лежит', tiredUntil:null }); });
       checkWalkingReturns();
+      checkCastleReturns();
     }, 10000);
 
-    document.getElementById('logout-btn').addEventListener('click', () => auth.signOut());
-    console.log('🐱 Генетика котов v3.1');
+    document.getElementById('logout-btn').addEventListener('click', ()=> auth.signOut());
+    console.log('🐱 Генетика котов v3.2 полная с выбором устройства');
   </script>
 </body>
 </html>
