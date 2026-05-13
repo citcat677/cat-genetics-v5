@@ -22,9 +22,15 @@
 
     <script>
         // ================== ВАШ КОНФИГ ==================
-       const firebaseConfig = {
-
-  apiKey: "AIzaSyBSO84yoAhHUCIejdf9mmo89oXIYeeSFfs",   authDomain: "cat-genetics-v6.firebaseapp.com",   projectId: "cat-genetics-v6",   storageBucket: "cat-genetics-v6.firebasestorage.app",   messagingSenderId: "302978224196",   appId: "1:302978224196:web:106b02fc1157bd17fdac11",   measurementId: "G-HKJQVRPCZJ" };
+        const firebaseConfig = {
+  apiKey: "AIzaSyBSO84yoAhHUCIejdf9mmo89oXIYeeSFfs",
+  authDomain: "cat-genetics-v6.firebaseapp.com",
+  projectId: "cat-genetics-v6",
+  storageBucket: "cat-genetics-v6.firebasestorage.app",
+  messagingSenderId: "302978224196",
+  appId: "1:302978224196:web:106b02fc1157bd17fdac11",
+  measurementId: "G-HKJQVRPCZJ"
+};
 
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
@@ -52,10 +58,20 @@
             else dot.classList.remove('has-notifications');
         }
 
-        // ================== СБРОС ВСЕХ ДАННЫХ (только для админа) ==================
-        async function resetEverything() {
-            if (!confirm('⚠️ Вы уверены, что хотите УДАЛИТЬ ВСЕ ДАННЫЕ игры? Все коты, монеты, пользователи исчезнут. Это действие необратимо!')) return;
+        // Модальное окно, которое блокирует интерфейс
+        function showModal(title, message, onClose = null) {
+            const modal = document.getElementById('info-modal');
+            document.getElementById('info-title').innerText = title;
+            document.getElementById('info-message').innerHTML = message;
+            modal.classList.add('active');
+            document.getElementById('info-ok-btn').onclick = () => {
+                modal.classList.remove('active');
+                if (onClose) onClose();
+            };
+        }
 
+        async function resetEverything() {
+            if (!confirm('⚠️ Удалить ВСЕ данные игры?')) return;
             const collections = ['cats', 'users', 'park', 'sales', 'trades', 'server'];
             for (const col of collections) {
                 const snapshot = await db.collection(col).get();
@@ -63,18 +79,18 @@
                 snapshot.forEach(doc => batch.delete(doc.ref));
                 await batch.commit();
             }
-            alert('Все данные удалены. Перезагрузите страницу.');
+            alert('Данные удалены. Перезайдите в игру.');
             auth.signOut();
             location.reload();
         }
 
         function showLanding() {
-            document.getElementById('app').innerHTML = `
+
+document.getElementById('app').innerHTML = `
                 <div class="flex flex-col items-center justify-center min-h-screen">
                     <h1 class="text-5xl font-bold text-purple-700 mb-6">🐱 Генетика котов</h1>
                     <p class="text-xl mb-8">Добро пожаловать!</p>
-
-<button id="play-btn" class="bg-purple-600 text-white px-10 py-4 rounded-full text-2xl font-bold">Играть</button>
+                    <button id="play-btn" class="bg-purple-600 text-white px-10 py-4 rounded-full text-2xl font-bold">Играть</button>
                 </div>`;
             document.getElementById('play-btn').onclick = showAuthForm;
         }
@@ -102,9 +118,7 @@
                 auth.createUserWithEmailAndPassword(email, password)
                     .then(() => {
                         db.collection('users').doc(auth.currentUser.uid).set({
-                            coins: 20,
-                            catsBought: 0,
-                            homeSize: 'маленький'
+                            coins: 20, catsBought: 0, homeSize: 'маленький'
                         });
                     })
                     .catch(e => document.getElementById('auth-error').innerText = e.message);
@@ -124,7 +138,7 @@
                             <div id="notif-dot" class="notification-dot">
                                 <button id="messages-btn" class="bg-blue-400 text-white px-3 py-1 rounded">✉️</button>
                             </div>
-                            ${isAdmin ? '<button id="reset-btn" class="bg-red-500 text-white px-3 py-1 rounded" title="Полный сброс игры">🌹</button>' : ''}
+                            ${isAdmin ? '<button id="reset-btn" class="bg-red-500 text-white px-3 py-1 rounded" title="Сброс">🌹</button>' : ''}
                             <button id="logout-btn" class="bg-gray-500 text-white px-3 py-1 rounded">Выйти</button>
                         </div>
                     </div>
@@ -135,10 +149,10 @@
                     </div>
                     <div class="mt-4">
                         <h2 class="font-bold text-lg mb-2">Разведение</h2>
-                        <select id="mother-select" class="border p-1"><option value="">-- мать --</option></select>
-                        <select id="father-select" class="border p-1 ml-2"><option value="">-- отец --</option></select>
 
-<button id="breed-btn" class="bg-pink-500 text-white px-3 py-1 rounded ml-2">Скрестить</button>
+<select id="mother-select" class="border p-1"><option value="">-- мать --</option></select>
+                        <select id="father-select" class="border p-1 ml-2"><option value="">-- отец --</option></select>
+                        <button id="breed-btn" class="bg-pink-500 text-white px-3 py-1 rounded ml-2">Скрестить</button>
                     </div>
                     <div class="mt-4">
                         <h2 class="font-bold text-lg mb-2">Все коты</h2>
@@ -151,12 +165,25 @@
                         <h2 class="text-xl font-bold mb-4">Сообщения</h2>
                         <div id="messages-list"></div>
                     </div>
-                </div>`;
+                </div>
+                <div id="info-modal" class="modal">
+                    <div class="bg-white p-6 rounded-lg max-w-md w-full text-center">
+                        <h2 id="info-title" class="text-xl font-bold mb-4"></h2>
+                        <div id="info-message" class="mb-4"></div>
+                        <button id="info-ok-btn" class="bg-blue-500 text-white px-6 py-2 rounded">ОК</button>
+                    </div>
+                </div>
+                <div id="kitten-name-modal" class="modal">
+                    <div class="bg-white p-6 rounded-lg max-w-md w-full">
+                        <h2 class="text-xl font-bold mb-4">🐱 Назовите котёнка!</h2>
+                        <p id="kitten-details"></p>
+                        <input id="kitten-name-input" type="text" placeholder="Имя" class="border p-2 w-full mt-2">
+                        <button id="kitten-name-ok" class="mt-4 bg-green-500 text-white px-4 py-2 rounded">ОК</button>
+                    </div>
+                </div>
+            `;
 
-            // Кнопка сброса
-            if (isAdmin) {
-                document.getElementById('reset-btn').onclick = resetEverything;
-            }
+            if (isAdmin) document.getElementById('reset-btn').onclick = resetEverything;
 
             // Монеты и покупка
             db.collection('users').doc(uid).onSnapshot(doc => {
@@ -177,7 +204,7 @@
                 snap.forEach(doc => cats.push({ id: doc.id, ...doc.data() }));
                 const div = document.getElementById('my-cats');
                 div.innerHTML = cats.length ? cats.map(c => `
-                    <div class="border p-2 rounded">${c.name} {${c.gender === 'кот' ? 'мальчик' : 'девочка'}} [${String(c.id).padStart(4, '0')}] ${c.age}</div>
+                    <div class="border p-2 rounded">${c.name} {${c.gender === 'кот' ? 'мальчик' : 'девочка'}} [${String(c.id).padStart(4, '0')}] ${c.age} ${c.isPregnant ? ' <span class="text-pink-500">(беременна)</span>' : ''}</div>
                 `).join('') : '<p>Нет котов.</p>';
                 const opts = cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
                 document.getElementById('mother-select').innerHTML = '<option value="">-- мать --</option>' + opts;
@@ -186,7 +213,8 @@
 
             // Все коты
             db.collection('cats').onSnapshot(snap => {
-                const cats = [];
+
+const cats = [];
                 snap.forEach(doc => cats.push({ id: doc.id, ...doc.data() }));
                 document.getElementById('all-cats').innerHTML = cats.map(c => `
                     <div class="border p-2 rounded text-sm">${c.name} {${c.gender === 'кот' ? 'мальчик' : 'девочка'}} [${String(c.id).padStart(4, '0')}]</div>
@@ -200,70 +228,134 @@
                 const bought = d.catsBought || 0;
                 const coins = d.coins || 0;
                 const price = bought === 0 ? 0 : bought === 1 ? 10 : 100;
-                if (bought >= 3) { alert('Вы раскупили всех котов.'); return; }
-                if (coins < price) { alert('Недостаточно монет.'); return; }
+                if (bought >= 3) { showModal('Ошибка', 'Вы раскупили всех котов.'); return; }
+                if (coins < price) { showModal('Ошибка', 'Недостаточно монет.'); return; }
                 if (price > 0) await db.collection('users').doc(uid).update({ coins: firebase.firestore.FieldValue.increment(-price) });
                 const gender = Math.random() < 0.5 ? 'кошка' : 'кот';
                 const newId = (await db.collection('cats').get()).size + 1;
-
-await db.collection('cats').add({
+                await db.collection('cats').add({
                     owner: uid,
                     name: gender === 'кот' ? randomItem(MALE_NAMES) : randomItem(FEMALE_NAMES),
-                    gender,
-                    age: 'взрослый',
-                    id: newId,
-                    coatColor: randomItem(COAT_COLORS),
-                    eyeColor: randomItem(EYE_COLORS),
-                    character: randomItem(CHARACTERS),
-                    isPregnant: false,
+                    gender, age: 'взрослый', id: newId,
+                    coatColor: randomItem(COAT_COLORS), eyeColor: randomItem(EYE_COLORS),
+                    character: randomItem(CHARACTERS), isPregnant: false,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 await db.collection('users').doc(uid).update({ catsBought: bought + 1 });
+                showModal('Успех', 'Вы получили нового кота!');
             };
 
             // Разведение
             document.getElementById('breed-btn').onclick = async () => {
                 const motherId = document.getElementById('mother-select').value;
                 const fatherId = document.getElementById('father-select').value;
-                if (!motherId || !fatherId) { alert('Выберите обоих родителей.'); return; }
+                if (!motherId || !fatherId) {
+                    showModal('Ошибка', 'Выберите мать и отца.');
+                    return;
+                }
                 const [mSnap, fSnap] = await Promise.all([
                     db.collection('cats').doc(motherId).get(),
                     db.collection('cats').doc(fatherId).get()
                 ]);
                 if (!mSnap.exists || !fSnap.exists) return;
                 const m = mSnap.data(), f = fSnap.data();
-                if (m.gender !== 'кошка' || f.gender !== 'кот') { alert('Нужна кошка и кот.'); return; }
+
+                if (m.gender !== 'кошка' || f.gender !== 'кот') {
+                    showModal('Ошибка', 'Мать должна быть кошкой {девочка}, а отец — котом {мальчик}.');
+                    return;
+                }
                 if (m.age === 'новорождённый' || m.age === 'котёнок' || f.age === 'новорождённый' || f.age === 'котёнок') {
-                    alert('Котята не могут размножаться.'); return;
+                    showModal('Ошибка', 'Котята не могут размножаться. Подождите, пока они вырастут.');
+                    return;
                 }
                 const userDoc = await db.collection('users').doc(uid).get();
-                if (userDoc.data().coins < 10) { alert('Недостаточно монет (10).'); return; }
+                if (userDoc.data().coins < 10) {
+                    showModal('Ошибка', 'Недостаточно монет (нужно 10).');
+                    return;
+                }
+                // Снимаем монеты и запускаем беременность
                 await db.collection('users').doc(uid).update({ coins: firebase.firestore.FieldValue.increment(-10) });
-                const coat = inheritCoat(m.coatColor, f.coatColor);
-                const eye = inheritEyes(m.eyeColor, f.eyeColor);
-                const gender = Math.random() < 0.5 ? 'кошка' : 'кот';
-                const newId = (await db.collection('cats').get()).size + 1;
-                await db.collection('cats').add({
-                    owner: uid,
-                    name: gender === 'кот' ? randomItem(MALE_NAMES) : randomItem(FEMALE_NAMES),
-                    gender,
-                    age: 'новорождённый',
-                    id: newId,
-                    coatColor: coat,
-                    eyeColor: eye,
-                    character: randomItem(CHARACTERS),
-                    isPregnant: false,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                await db.collection('cats').doc(motherId).update({
+                    isPregnant: true,
+                    pregnancyStart: firebase.firestore.FieldValue.serverTimestamp(),
+                    fatherId: fatherId
                 });
-                addNotification('Родился котёнок!');
+                showModal('Успех', `Ваша кошка ${m.name} успешно забеременела! Родит через 5 минут.`);
             };
+
+            // Проверка родов (каждые 10 секунд)
+
+setInterval(async () => {
+                const pregnantCats = await db.collection('cats').where('isPregnant', '==', true).get();
+                const now = Date.now();
+                for (const doc of pregnantCats.docs) {
+                    const cat = doc.data();
+                    if (cat.pregnancyStart && now - cat.pregnancyStart.toMillis() >= 300000) {
+                        // Роды
+                        const fatherId = cat.fatherId;
+                        let fatherData = {};
+                        if (fatherId) {
+                            const fSnap = await db.collection('cats').doc(fatherId).get();
+                            if (fSnap.exists) fatherData = fSnap.data();
+                        }
+                        const count = cat.litterCount === 0 ? Math.floor(Math.random() * 3) + 1 : Math.floor(Math.random() * 5) + 1;
+                        for (let i = 0; i < count; i++) {
+                            const coat = inheritCoat(cat.coatColor, fatherData.coatColor || cat.coatColor);
+                            const eye = inheritEyes(cat.eyeColor, fatherData.eyeColor || cat.eyeColor);
+                            const gender = Math.random() < 0.5 ? 'кошка' : 'кот';
+                            const newId = (await db.collection('cats').get()).size + 1;
+                            const newKitten = {
+                                owner: cat.owner,
+                                name: '',
+                                gender,
+                                age: 'новорождённый',
+                                id: newId,
+                                coatColor: coat,
+                                eyeColor: eye,
+                                character: randomItem(CHARACTERS),
+                                isPregnant: false,
+                                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                                motherId: cat.id,
+                                fatherId: cat.fatherId
+                            };
+                            // Показываем окно именования
+                            showKittenNaming(newKitten);
+                        }
+                        await db.collection('cats').doc(doc.id).update({
+                            isPregnant: false,
+                            pregnancyStart: null,
+                            litterCount: firebase.firestore.FieldValue.increment(1)
+                        });
+                        addNotification(`Кошка ${cat.name} родила!`);
+                    }
+                }
+            }, 10000);
+
+            // Функция показа окна именования
+            function showKittenNaming(kittenData) {
+                const modal = document.getElementById('kitten-name-modal');
+                document.getElementById('kitten-details').innerHTML = `
+                    Пол: {${kittenData.gender === 'кот' ? 'мальчик' : 'девочка'}}<br>
+                    Окрас: ${kittenData.coatColor}, глаза: ${kittenData.eyeColor}
+                `;
+                document.getElementById('kitten-name-input').value = '';
+                modal.classList.add('active');
+                document.getElementById('kitten-name-ok').onclick = async () => {
+                    const name = document.getElementById('kitten-name-input').value.trim() ||
+                        (kittenData.gender === 'кот' ? randomItem(MALE_NAMES) : randomItem(FEMALE_NAMES));
+                    await db.collection('cats').add({ ...kittenData, name });
+                    modal.classList.remove('active');
+                };
+            }
 
             // Сообщения
             document.getElementById('messages-btn').onclick = () => {
                 const modal = document.getElementById('messages-modal');
-                document.getElementById('messages-list').innerHTML = notifications.length ? notifications.map(n => `<p>${n.message}</p>`).join('') : 'Нет сообщений.';
+                document.getElementById('messages-list').innerHTML = notifications.length ?
+                    notifications.map(n => `<p>${n.message}</p>`).join('') : 'Нет сообщений.';
                 notifications.forEach(n => n.read = true);
-                updateNotifDot();
+
+updateNotifDot();
                 modal.style.display = 'flex';
             };
 
