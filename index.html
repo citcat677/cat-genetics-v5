@@ -14,6 +14,7 @@
     .notification-dot::after { content: ''; position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; background: red; border-radius: 50%; display: none; }
     .notification-dot.has-notifications::after { display: block; }
     .countdown { font-weight: bold; color: #c026d3; }
+    .cat-link { cursor: pointer; }
   </style>
 </head>
 <body class="bg-gray-100">
@@ -24,7 +25,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <script>
-  // ================== ВАШ КОНФИГ ==================
   const firebaseConfig = {
     apiKey: "AIzaSyBSO84yoAhHUCIejdf9mmo89oXIYeeSFfs",
     authDomain: "cat-genetics-v6.firebaseapp.com",
@@ -39,7 +39,6 @@
   const auth = firebase.auth();
   const db = firebase.firestore();
 
-  // Константы
   const COAT_COLORS = ['черный', 'белый', 'рыжий', 'серый'];
   const EYE_COLORS = ['голубой', 'зеленый', 'желтый'];
   const PATTERNS = ['однотонный', 'полосатый', 'крапчатый', 'поинт'];
@@ -51,11 +50,12 @@
   function inheritCoat(c1, c2) { return Math.random() < 0.5 ? c1 : c2; }
   function inheritEyes(e1, e2) { return Math.random() < 0.5 ? e1 : e2; }
 
-  // Уведомления
   let notifications = [];
-  function addNotification(msg) {
-    notifications.unshift({ message: msg, read: false, time: Date.now() });
+  function addNotification(msg, options = {}) {
+    const notif = { message: msg, read: false, time: Date.now(), ...options };
+    notifications.unshift(notif);
     updateNotifDot();
+    return notif;
   }
   function updateNotifDot() {
     const dot = document.getElementById('notif-dot');
@@ -64,7 +64,6 @@
     else dot.classList.remove('has-notifications');
   }
 
-  // Игровое время
   let gameTimeInterval, serverTimeOffset = 0;
   async function getServerTime() {
     const snap = await db.collection('server').doc('time').get();
@@ -77,7 +76,7 @@
     if (gameTimeInterval) clearInterval(gameTimeInterval);
     gameTimeInterval = setInterval(() => {
       const realNow = Date.now() + serverTimeOffset;
-      const gameSeconds = Math.floor(realNow / 1000) * 60; // 1 сек = 1 игр. минута
+      const gameSeconds = Math.floor(realNow / 1000) * 60;
       const totalMinutes = gameSeconds % (24 * 60);
       const h = Math.floor(totalMinutes / 60);
       const m = totalMinutes % 60;
@@ -91,8 +90,7 @@
 
   function showLanding() {
     document.getElementById('app').innerHTML = `
-
-<div class="flex flex-col items-center justify-center min-h-screen">
+      <div class="flex flex-col items-center justify-center min-h-screen">
         <h1 class="text-5xl font-bold text-purple-700 mb-6">🐱 Генетика котов</h1>
         <p class="text-xl mb-8">Добро пожаловать!</p>
         <button id="play-btn" class="bg-purple-600 text-white px-10 py-4 rounded-full text-2xl font-bold">Играть</button>
@@ -160,8 +158,7 @@
           <button class="tab-link px-4 py-2 font-semibold bg-gray-200" data-tab="home">🏠 Дом</button>
           <button class="tab-link px-4 py-2 font-semibold" data-tab="street">🌳 Улица</button>
           <button class="tab-link px-4 py-2 font-semibold" data-tab="park">🏞️ Парк</button>
-
-<button class="tab-link px-4 py-2 font-semibold" data-tab="shop">🛒 Магазин</button>
+          <button class="tab-link px-4 py-2 font-semibold" data-tab="shop">🛒 Магазин</button>
           <button class="tab-link px-4 py-2 font-semibold" data-tab="search">🔍 Поиск</button>
           <button class="tab-link px-4 py-2 font-semibold" data-tab="breeding">🧬 Разведение</button>
         </div>
@@ -179,7 +176,17 @@
           <div id="naming-details"></div>
           <input id="naming-input" type="text" placeholder="Введите имя" class="border p-2 w-full mt-2">
           <div class="flex gap-2 mt-4">
-            <button id="save-name-btn" class="bg-green-500 text-white px-4 py-2 rounded">Сохранить имя</button>
+            <button id="save-name-btn" class="bg-green-500 text-white px-4 py-2 rounded">✅</button>
+          </div>
+        </div>
+      </div>
+      <div id="confirm-overlay" class="overlay">
+        <div class="bg-white p-6 rounded-lg max-w-md w-full text-center">
+          <h2 class="text-xl font-bold mb-4">Подтверждение</h2>
+          <div id="confirm-message" class="mb-4"></div>
+          <div class="flex gap-2 justify-center">
+            <button id="confirm-yes-btn" class="bg-green-500 text-white px-6 py-2 rounded">✅</button>
+            <button id="confirm-no-btn" class="bg-gray-300 px-6 py-2 rounded">Отмена</button>
           </div>
         </div>
       </div>
@@ -251,8 +258,7 @@
         const snap = await db.collection(col).get();
         const batch = db.batch();
         snap.forEach(doc => batch.delete(doc.ref));
-
-await batch.commit();
+        await batch.commit();
       }
     }
 
@@ -283,17 +289,9 @@ await batch.commit();
       if (price > 0) await db.collection('users').doc(uid).update({ coins: firebase.firestore.FieldValue.increment(-price) });
       const newId = (await db.collection('cats').get()).size + 1;
       const newCat = {
-        owner: uid,
-        name: '',
-        gender: Math.random() < 0.5 ? 'кошка' : 'кот',
-        age: 'взрослый',
-        id: newId,
-        coatColor: randomItem(COAT_COLORS),
-        eyeColor: randomItem(EYE_COLORS),
-        pattern: randomItem(PATTERNS),
-        character: randomItem(CHARACTERS),
-        isPregnant: false,
-        state: 'лежит',
+        owner: uid, name: '', gender: Math.random() < 0.5 ? 'кошка' : 'кот', age: 'взрослый', id: newId,
+        coatColor: randomItem(COAT_COLORS), eyeColor: randomItem(EYE_COLORS), pattern: randomItem(PATTERNS),
+        character: randomItem(CHARACTERS), isPregnant: false, state: 'лежит',
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       };
       openNaming(newCat);
@@ -329,6 +327,19 @@ await batch.commit();
       };
     }
 
+    function showConfirm(msg, onConfirm) {
+      const overlay = document.getElementById('confirm-overlay');
+      document.getElementById('confirm-message').innerText = msg;
+      overlay.classList.add('active');
+      document.getElementById('confirm-yes-btn').onclick = () => {
+        overlay.classList.remove('active');
+        onConfirm();
+      };
+      document.getElementById('confirm-no-btn').onclick = () => {
+        overlay.classList.remove('active');
+      };
+    }
+
     function switchTab(tabId) {
       document.querySelectorAll('.tab-link').forEach(b => b.classList.remove('bg-gray-200'));
       const activeBtn = document.querySelector(`.tab-link[data-tab="${tabId}"]`);
@@ -339,30 +350,28 @@ await batch.commit();
       activeMainTab = tabId;
     }
 
-    // Мои коты
+    // Мои коты (с кликабельным именем)
     db.collection('cats').where('owner', '==', uid).onSnapshot(snap => {
       const cats = [];
       snap.forEach(doc => cats.push({ id: doc.id, ...doc.data() }));
       const myCatsDiv = document.getElementById('my-cats');
       if (myCatsDiv) {
         myCatsDiv.innerHTML = cats.length ? cats.map(c => `
-          <div class="border p-2 rounded">
-            <span class="text-blue-600 cursor-pointer font-bold" onclick="openCatView('${c.id}')">${c.name}</span>
+          <div class="border p-2 rounded flex items-center gap-2">
+            <span class="cat-link" onclick="openCatView('${c.id}')">🐱 <span class="text-blue-600 font-bold">${c.name}</span></span>
             {${c.gender === 'кот' ? 'мальчик' : 'девочка'}} [${String(c.id).padStart(4, '0')}] ${c.age} <span class="text-sm">(${c.state})</span>
-
-</div>
+          </div>
         `).join('') : '<p>Нет котов.</p>';
       }
     });
 
-    // Все коты
     db.collection('cats').onSnapshot(snap => {
       const cats = [];
       snap.forEach(doc => cats.push(doc.data()));
       const streetDiv = document.getElementById('street-content');
       if (streetDiv) {
         streetDiv.innerHTML = '<h2 class="font-bold text-lg mb-2">Все коты</h2>' + cats.map(c => `
-          <div class="border p-2 rounded text-sm">${c.name} {${c.gender === 'кот' ? 'мальчик' : 'девочка'}} [${String(c.id).padStart(4, '0')}] – ${c.coatColor}, ${c.eyeColor}</div>
+          <div class="border p-2 rounded text-sm">🐱 ${c.name} {${c.gender === 'кот' ? 'мальчик' : 'девочка'}} [${String(c.id).padStart(4, '0')}] – ${c.coatColor}, ${c.eyeColor}</div>
         `).join('');
       }
     });
@@ -397,7 +406,7 @@ await batch.commit();
       switchTab('home');
     };
 
-    // Разведение
+    // РАЗВЕДЕНИЕ
     function loadBreedingTab() {
       const container = document.getElementById('breeding-content');
       container.innerHTML = `
@@ -420,109 +429,134 @@ await batch.commit();
       document.getElementById('breed-btn').onclick = async () => {
         const motherId = document.getElementById('mother-select').value;
         const fatherId = document.getElementById('father-select').value;
-        if (!motherId || !fatherId) {
-          showError('Выберите мать и отца.');
-          return;
-        }
-
-const [mSnap, fSnap] = await Promise.all([
+        if (!motherId || !fatherId) { showError('Выберите мать и отца.'); return; }
+        const [mSnap, fSnap] = await Promise.all([
           db.collection('cats').doc(motherId).get(),
           db.collection('cats').doc(fatherId).get()
         ]);
         if (!mSnap.exists || !fSnap.exists) return;
         const m = mSnap.data(), f = fSnap.data();
-        if (m.gender !== 'кошка' || f.gender !== 'кот') {
-          showError('Мать должна быть кошкой, отец — котом.');
-          return;
-        }
+        if (m.gender !== 'кошка' || f.gender !== 'кот') { showError('Мать должна быть кошкой, отец — котом.'); return; }
         const userDoc = await db.collection('users').doc(uid).get();
-        if (userDoc.data().coins < 10) {
-          showError('Недостаточно монет (нужно 10).');
-          return;
-        }
-        await db.collection('users').doc(uid).update({ coins: firebase.firestore.FieldValue.increment(-10) });
-        const pregnancyEnd = Date.now() + 300000;
-        await db.collection('cats').doc(motherId).update({
-          isPregnant: true,
-          pregnancyStart: firebase.firestore.FieldValue.serverTimestamp(),
-          pregnancyEnd: pregnancyEnd,
-          fatherId: fatherId,
-          state: 'беременна'
+        if (userDoc.data().coins < 10) { showError('Недостаточно монет (нужно 10).'); return; }
+        showConfirm(`Ваша кошка теперь беременна. После нажатия "✅" мы отправим вам письмо. Нажав на "👁", вы сможете отслеживать время до родов. Удачи!`, async () => {
+          await db.collection('users').doc(uid).update({ coins: firebase.firestore.FieldValue.increment(-10) });
+          const pregnancyEnd = Date.now() + 300000;
+          await db.collection('cats').doc(motherId).update({
+            isPregnant: true,
+            pregnancyStart: firebase.firestore.FieldValue.serverTimestamp(),
+            pregnancyEnd: pregnancyEnd,
+            fatherId: fatherId,
+            state: 'беременна'
+          });
+          // Добавляем уведомление о беременности с кнопкой 👁
+          const notif = addNotification(`🐱 ${m.name} забеременела! Беременность длится 5 реальных минут. <button class="text-blue-600 underline" onclick="viewPregnancy('${motherId}')">👁</button>`, { type: 'pregnancy', catId: motherId, pregnancyEnd });
+          // Сохраняем ID уведомления, чтобы потом удалить
+          localStorage.setItem(`preg_notif_${motherId}`, JSON.stringify(notif));
         });
-        addNotification(`🐱 ${m.name} забеременела! Родит через 5 минут. <span class="countdown" id="count-${m.id}">5:00</span> <button onclick="viewPregnancy('${m.id}')" class="text-blue-600 underline">👁</button>`);
-        showError('Кошка успешно забеременела!');
       };
     }
 
-    // Отслеживание родов
+    // Отслеживание родов и авто-роды через 10 минут
     setInterval(async () => {
       const now = Date.now();
       const snap = await db.collection('cats').where('isPregnant', '==', true).get();
-      snap.forEach(async doc => {
+      for (const doc of snap.docs) {
         const cat = doc.data();
         if (cat.pregnancyEnd && now >= cat.pregnancyEnd) {
-          const fatherId = cat.fatherId;
-          let fatherData = {};
-          if (fatherId) {
-            const fSnap = await db.collection('cats').doc(fatherId).get();
-            if (fSnap.exists) fatherData = fSnap.data();
+          // Проверяем, не было ли уже родового уведомления
+          const birthNotifKey = `birth_notif_${cat.id}`;
+          if (!localStorage.getItem(birthNotifKey)) {
+            // Добавляем сообщение о родах с 💥
+            const notif = addNotification(`У кошки ${cat.name} начались роды! Срочно нажмите <button class="text-blue-600 underline" onclick="acceptBirth('${cat.id}')">💥 Принять роды</button>`, { type: 'birth', catId: cat.id, birthTime: now });
+            localStorage.setItem(birthNotifKey, JSON.stringify(notif));
+            // Удаляем предыдущее сообщение о беременности
+            const pregNotif = JSON.parse(localStorage.getItem(`preg_notif_${cat.id}`));
+            if (pregNotif) {
+              notifications = notifications.filter(n => n !== pregNotif);
+              localStorage.removeItem(`preg_notif_${cat.id}`);
+            }
           }
-          const count = cat.litterCount === 0 ? Math.floor(Math.random() * 3) + 1 : Math.floor(Math.random() * 5) + 1;
-          for (let i = 0; i < count; i++) {
-            const coat = inheritCoat(cat.coatColor, fatherData.coatColor || cat.coatColor);
-            const eye = inheritEyes(cat.eyeColor, fatherData.eyeColor || cat.eyeColor);
-            const gender = Math.random() < 0.5 ? 'кошка' : 'кот';
-            const newId = (await db.collection('cats').get()).size + 1;
-            const kitten = {
-              owner: cat.owner,
-              name: '',
-              gender,
-              age: 'новорождённый',
-              id: newId,
-              coatColor: coat,
-              eyeColor: eye,
-              pattern: randomItem(PATTERNS),
-              character: randomItem(CHARACTERS),
-              isPregnant: false,
-              state: 'лежит',
-              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-              motherId: cat.id,
-              fatherId: cat.fatherId
-            };
-            openNaming(kitten);
+          // Проверка авто-родов через 10 минут после birth-уведомления
+          const birthNotif = JSON.parse(localStorage.getItem(`birth_notif_${cat.id}`));
+          if (birthNotif && now - birthNotif.birthTime > 600000) {
+            // Прошло 10 минут, автоматически рожаем
+            await performBirth(cat.id);
           }
-          await db.collection('cats').doc(doc.id).update({
-            isPregnant: false,
-            pregnancyStart: null,
-            pregnancyEnd: null,
-            state: 'уставшая',
-            litterCount: firebase.firestore.FieldValue.increment(1)
-          });
-          addNotification(`🐱 ${cat.name} родила!`);
         }
-      });
-      // обновление счётчиков в уведомлениях
-      document.querySelectorAll('.countdown').forEach(el => {
-        const catId = el.id.replace('count-', '');
-        db.collection('cats').doc(catId).get().then(d => {
-          if (d.exists && d.data().pregnancyEnd) {
-            const remaining = Math.max(0, Math.ceil((d.data().pregnancyEnd - now) / 1000));
-            const mins = Math.floor(remaining / 60);
-            const secs = remaining % 60;
-            el.innerText = `${mins}:${String(secs).padStart(2,'0')}`;
-          }
-        });
-      });
-    }, 1000);
+      }
+    }, 5000);
 
     window.viewPregnancy = (catId) => {
-      switchTab('home');
-      // просто фокус на коте
+      // Переключаемся на вкладку кота для просмотра отсчёта
+      openCatView(catId);
     };
 
-    // Сообщения
+    window.acceptBirth = async (catId) => {
+      await performBirth(catId);
+    };
 
-document.getElementById('messages-btn').onclick = () => {
+    async function performBirth(catId) {
+      const catDoc = await db.collection('cats').doc(catId).get();
+      if (!catDoc.exists) return;
+      const cat = catDoc.data();
+      if (!cat.isPregnant) return; // уже родила
+      const fatherId = cat.fatherId;
+      let fatherData = {};
+      if (fatherId) {
+        const fSnap = await db.collection('cats').doc(fatherId).get();
+        if (fSnap.exists) fatherData = fSnap.data();
+      }
+      // для теста всегда один котёнок
+      const count = 1;
+      for (let i = 0; i < count; i++) {
+        const coat = inheritCoat(cat.coatColor, fatherData.coatColor || cat.coatColor);
+        const eye = inheritEyes(cat.eyeColor, fatherData.eyeColor || cat.eyeColor);
+        const gender = Math.random() < 0.5 ? 'кошка' : 'кот';
+        const newId = (await db.collection('cats').get()).size + 1;
+        const kitten = {
+          owner: cat.owner,
+          name: '',
+          gender,
+          age: 'новорождённый',
+          id: newId,
+          coatColor: coat,
+          eyeColor: eye,
+          pattern: randomItem(PATTERNS),
+          character: randomItem(CHARACTERS),
+          isPregnant: false,
+          state: 'лежит',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          motherId: cat.id,
+          fatherId: cat.fatherId
+        };
+        // Открываем окно именования
+        openNaming(kitten);
+      }
+      // Обновляем состояние кошки
+      await db.collection('cats').doc(catId).update({
+        isPregnant: false,
+        pregnancyStart: null,
+        pregnancyEnd: null,
+        state: 'уставшая',
+        litterCount: firebase.firestore.FieldValue.increment(1)
+      });
+      // Удаляем уведомления о беременности и родах
+      const pregNotif = JSON.parse(localStorage.getItem(`preg_notif_${catId}`));
+      if (pregNotif) {
+        notifications = notifications.filter(n => n !== pregNotif);
+        localStorage.removeItem(`preg_notif_${catId}`);
+      }
+      const birthNotif = JSON.parse(localStorage.getItem(`birth_notif_${catId}`));
+      if (birthNotif) {
+        notifications = notifications.filter(n => n !== birthNotif);
+        localStorage.removeItem(`birth_notif_${catId}`);
+      }
+      updateNotifDot();
+    }
+
+    // Сообщения
+    document.getElementById('messages-btn').onclick = () => {
       switchTab('messages');
       let container = document.getElementById('messages-content');
       if (!container) {
