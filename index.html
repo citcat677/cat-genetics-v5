@@ -102,7 +102,7 @@
     const EYE_COLORS = ['голубой','зелёный','жёлтый','карий','красно-розовый'];
     const CHARACTERS = ['спокойный','игривый','ленивый','любопытный','независимый','ласковый'];
 
-    // Матрица наследования окрасов (родительские окрасы имеют больший вес)
+    // Матрица наследования окрасов
     const colorInheritance = {
       'чёрный_чёрный':[{c:'чёрный',p:80},{c:'серый',p:15},{c:'белый',p:5}],
       'чёрный_серый':[{c:'чёрный',p:50},{c:'серый',p:40},{c:'белый',p:10}],
@@ -146,7 +146,7 @@
       const r = Math.random() * 100;
       if (r < 2) {
         cat.mainColor = 'белый'; cat.pattern = 'однотонный'; cat.eyeColor = 'красно-розовый';
-        cat.mutations.push('альбинизм'); return;
+        cat.mutations.push('альбинизм'); cat.secondaryColor = null; return;
       }
       if (r < 5) {
         const c1 = EYE_COLORS[Math.floor(Math.random()*EYE_COLORS.length)];
@@ -156,9 +156,9 @@
         cat.mutations.push('гетерохромия'); return;
       }
       if (r < 8) {
-        if (cat.age === 'котёнок') cat.pattern = 'крапчатый';
-        else { cat.pattern = 'пятнистый'; cat.mainColor += ' (осветлённые пятна)'; }
-        cat.mutations.push('витилиго'); return;
+        cat.pattern = cat.age === 'котёнок' ? 'крапчатый' : 'пятнистый';
+        if (cat.age !== 'котёнок') cat.mainColor += ' (осветлённые пятна)';
+        cat.mutations.push('витилиго'); cat.secondaryColor = null; return;
       }
       if (r < 9) {
         cat.secondaryColor = COLORS[Math.floor(Math.random()*COLORS.length)];
@@ -185,6 +185,14 @@
         motherId: motherId || null, fatherId: fatherId || null,
         adultAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 5*60000))
       };
+      // Наследование secondaryColor
+      if (mother.secondaryColor && father.secondaryColor) {
+        kitten.secondaryColor = Math.random() < 0.5 ? mother.secondaryColor : father.secondaryColor;
+      } else if (mother.secondaryColor || father.secondaryColor) {
+        kitten.secondaryColor = Math.random() < 0.4 ? (mother.secondaryColor || father.secondaryColor) : null;
+      }
+      if (kitten.pattern === 'однотонный' || kitten.mutations.includes('витилиго')) kitten.secondaryColor = null;
+
       const motherMuts = mother.mutations || [], fatherMuts = father.mutations || [];
       motherMuts.forEach(m => { if (fatherMuts.includes(m) && Math.random() < 0.75) kitten.mutations.push(m); });
       if (kitten.mutations.length === 0) applyMutations(kitten);
@@ -202,6 +210,7 @@
         isPregnant: false, pregnancyEnd: null, tiredUntil: null, birthCount: 0,
         motherId: null, fatherId: null
       };
+      if (cat.pattern === 'однотонный') cat.secondaryColor = null;
       applyMutations(cat);
       return cat;
     }
@@ -215,15 +224,13 @@
     }
     function getInheritedPattern(mp, fp) {
       if (mp === fp) return Math.random() < 0.8 ? mp : PATTERNS[Math.floor(Math.random()*PATTERNS.length)];
-      const mixPatterns = [mp, fp, 'однотонный'];
-      return mixPatterns[Math.floor(Math.random()*mixPatterns.length)];
+      return Math.random() < 0.5 ? mp : fp;
     }
     function getInheritedEyeColor(me, fe) {
       const mc = typeof me === 'object' ? me.colors[0] : me;
       const fc = typeof fe === 'object' ? fe.colors[0] : fe;
       if (mc === fc) return Math.random() < 0.8 ? mc : EYE_COLORS[Math.floor(Math.random()*EYE_COLORS.length)];
-      const mixed = [mc, fc];
-      return mixed[Math.floor(Math.random()*mixed.length)];
+      return Math.random() < 0.5 ? mc : fc;
     }
     function pickFromProb(arr) { const r = Math.random()*100; let cum=0; for(const i of arr){cum+=i.p; if(r<=cum) return i.c;} return arr[arr.length-1].c; }
 
@@ -232,6 +239,14 @@
       document.getElementById('game-time').textContent = `${h>=6&&h<18?'☀️':'🌃'} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
     }
     function incrementGameTime() { gameMinutes++; updateGameTimeDisplay(); }
+
+    // Форматирование времени для таймеров
+    function timeLeftStr(until) {
+      const diff = until - new Date();
+      if (diff <= 0) return 'готово';
+      const m = Math.floor(diff/60000), s = Math.floor((diff%60000)/1000);
+      return `${m}:${String(s).padStart(2,'0')}`;
+    }
 
     // Устройство
     function applyDeviceMode(mode) {
@@ -283,7 +298,10 @@
 
     async function initApp() {
       updateGameTimeDisplay();
-      timeInterval = setInterval(incrementGameTime, 1000);
+      timeInterval = setInterval(() => {
+        incrementGameTime();
+        updateAllTimers();
+      }, 1000);
       const userDoc = await db.collection('users').doc(currentUser.uid).get();
       if(!userDoc.exists) await db.collection('users').doc(currentUser.uid).set({ coins:100, nickname:currentUser.email });
       if(currentUser.email==='katya2013sara1981@gmail.com') document.getElementById('reset-btn').classList.remove('hidden');
@@ -291,6 +309,17 @@
       listenNotifications();
       checkDeviceSelection();
       switchTab('home');
+    }
+
+    function updateAllTimers() {
+      document.querySelectorAll('.adult-timer-home').forEach(el => {
+        const until = new Date(el.dataset.until);
+        el.textContent = '⌚ ' + timeLeftStr(until);
+      });
+      document.querySelectorAll('.tired-timer-home').forEach(el => {
+        const until = new Date(el.dataset.until);
+        el.textContent = '⌚ ' + timeLeftStr(until);
+      });
     }
 
     function updateCoinsDisplay() {
@@ -353,7 +382,10 @@
           html += `<div class="cat-card bg-gray-700 p-3 rounded-lg w-44">
             <span class="cat-link cursor-pointer text-blue-300" data-cat-id="${doc.id}">🐱 ${c.name}</span>
             <div class="text-xs text-gray-400">{${c.gender==='male'?'мальчик':'девочка'}} [${c.idNumber}]</div>
-            <div class="text-xs">${c.age}${c.adultAt ? ' ⌚' : ''}</div><div class="text-xs text-pink-300">${c.state}${c.tiredUntil ? ' ⌚' : ''}</div></div>`;
+            <div class="text-xs">${c.age}${c.adultAt ? ` <span class="adult-timer-home" data-until="${c.adultAt.toDate().toISOString()}">⌚ ${timeLeftStr(c.adultAt.toDate())}</span>` : ''}</div>
+            <div class="text-xs text-pink-300">${c.state}${c.tiredUntil ? ` <span class="tired-timer-home" data-until="${c.tiredUntil.toDate().toISOString()}">⌚ ${timeLeftStr(c.tiredUntil.toDate())}</span>` : ''}</div>
+            ${c.secondaryColor ? `<div class="text-xs text-purple-300">Втор. цвет: ${c.secondaryColor}</div>` : ''}
+          </div>`;
         });
         html += '</div>';
         if(!snap.size) html += '<p class="text-gray-400">Нет котов</p>';
@@ -399,7 +431,7 @@
       content.querySelectorAll('.choose-cat-btn').forEach(b=>b.addEventListener('click', e=>{
         window._chosenCat = window._tempCats[e.target.dataset.idx];
         content.innerHTML = `<h2>Назовите кота</h2>
-          <div class="bg-gray-700 p-3 rounded-lg mb-3"><p><b>Окрас:</b> ${window._chosenCat.mainColor}</p>
+          <div class="bg-gray-700 p-3 rounded-lg mb-3"><p><b>Окрас:</b> ${window._chosenCat.mainColor}${window._chosenCat.secondaryColor?' + '+window._chosenCat.secondaryColor:''}</p>
           <p><b>Рисунок:</b> ${window._chosenCat.pattern}</p><p><b>Глаза:</b> ${formatEyeColor(window._chosenCat.eyeColor)}</p>
           <p><b>Пол:</b> {${window._chosenCat.gender==='male'?'мальчик':'девочка'}}</p></div>
           <input id="new-cat-name" placeholder="Имя" class="w-full p-2 rounded bg-gray-700 mb-2">
@@ -429,7 +461,6 @@
       document.getElementById('choose-cat-modal').classList.remove('active');
     }
 
-    // Разведение
     function renderBreeding() {
       const cont = document.getElementById('tab-content');
       cont.innerHTML='<p>Загрузка...</p>';
@@ -475,18 +506,19 @@
       if(!doc.exists) return;
       const c = doc.data();
       let html = `<h2>🐱 ${c.name}</h2><p>Пол: {${c.gender==='male'?'мальчик':'девочка'}}</p>
-        <p>ID: [${c.idNumber}]</p><p>Возраст: ${c.age}</p><p>Цвет: ${c.mainColor}${c.secondaryColor?'+'+c.secondaryColor:''}</p>
+        <p>ID: [${c.idNumber}]</p><p>Возраст: ${c.age}</p><p>Цвет: ${c.mainColor}${c.secondaryColor?' + '+c.secondaryColor:''}</p>
+        ${c.secondaryColor ? `<p>Втор. цвет: ${c.secondaryColor}</p>` : ''}
         <p>Окрас: ${c.pattern}</p><p>Глаза: ${formatEyeColor(c.eyeColor)}</p><p>Характер: ${c.character}</p>
         <p>Состояние: ${c.state}</p><p>Мутации: ${c.mutations?.join(', ')||'нет'}</p>`;
       if (c.age === 'котёнок' && c.adultAt) {
         const now = new Date();
         const ready = c.adultAt.toDate() <= now;
-        html += `<p>⌚ Вырастет: ${ready ? '<button class="btn btn-pink adult-btn" data-cat-id="${catId}">✅ Вырос!</button>' : '<span class="countdown" id="adult-timer-${catId}"></span>'}</p>`;
+        html += `<p>⌚ Вырастет: ${ready ? '<button class="btn btn-pink adult-btn" data-cat-id="${catId}">✅ Вырос!</button>' : `<span class="countdown" id="adult-timer-${catId}">${timeLeftStr(c.adultAt.toDate())}</span>`}</p>`;
       }
       if (c.state.startsWith('уставш') && c.tiredUntil) {
         const now = new Date();
         const ready = c.tiredUntil.toDate() <= now;
-        html += `<p>⌚ Отдых: ${ready ? '<button class="btn btn-pink rest-btn" data-cat-id="${catId}">😴💤 Отдохнул</button>' : '<span class="countdown" id="tired-timer-${catId}"></span>'}</p>`;
+        html += `<p>⌚ Отдых: ${ready ? '<button class="btn btn-pink rest-btn" data-cat-id="${catId}">😴💤 Отдохнул</button>' : `<span class="countdown" id="tired-timer-${catId}">${timeLeftStr(c.tiredUntil.toDate())}</span>`}</p>`;
       }
       html += `<div class="flex space-x-2 mt-3">
         <button class="btn btn-gray" onclick="document.getElementById('cat-modal').classList.remove('active')">Закрыть</button>
@@ -496,35 +528,30 @@
       document.getElementById('cat-modal-content').innerHTML = html;
       document.getElementById('cat-modal').classList.add('active');
 
-      // Таймеры
-      const adultTimerEl = document.getElementById(`adult-timer-${catId}`);
-      if (adultTimerEl) {
-        const update = () => {
-          const diff = c.adultAt.toDate() - new Date();
-          if (diff <= 0) { adultTimerEl.innerHTML = '<button class="btn btn-pink adult-btn" data-cat-id="${catId}">✅ Вырос!</button>'; return; }
-          const m = Math.floor(diff/60000), s = Math.floor((diff%60000)/1000);
-          adultTimerEl.textContent = `${m}:${String(s).padStart(2,'0')}`;
-        };
-        update();
-        const int = setInterval(update, 1000);
-        const observer = new MutationObserver(() => { if (!document.getElementById('cat-modal').classList.contains('active')) { clearInterval(int); observer.disconnect(); } });
-        observer.observe(document.getElementById('cat-modal'), { attributes: true });
+      // Таймеры в модалке
+      if (c.adultAt && !c.adultAt.toDate() <= new Date()) {
+        const timerEl = document.getElementById(`adult-timer-${catId}`);
+        if (timerEl) {
+          const int = setInterval(() => {
+            if (!document.getElementById('cat-modal').classList.contains('active')) { clearInterval(int); return; }
+            const diff = c.adultAt.toDate() - new Date();
+            if (diff <= 0) { timerEl.innerHTML = '<button class="btn btn-pink adult-btn" data-cat-id="${catId}">✅ Вырос!</button>'; clearInterval(int); return; }
+            timerEl.textContent = timeLeftStr(c.adultAt.toDate());
+          }, 1000);
+        }
       }
-      const tiredTimerEl = document.getElementById(`tired-timer-${catId}`);
-      if (tiredTimerEl) {
-        const update = () => {
-          const diff = c.tiredUntil.toDate() - new Date();
-          if (diff <= 0) { tiredTimerEl.innerHTML = '<button class="btn btn-pink rest-btn" data-cat-id="${catId}">😴💤 Отдохнул</button>'; return; }
-          const m = Math.floor(diff/60000), s = Math.floor((diff%60000)/1000);
-          tiredTimerEl.textContent = `${m}:${String(s).padStart(2,'0')}`;
-        };
-        update();
-        const int = setInterval(update, 1000);
-        const observer = new MutationObserver(() => { if (!document.getElementById('cat-modal').classList.contains('active')) { clearInterval(int); observer.disconnect(); } });
-        observer.observe(document.getElementById('cat-modal'), { attributes: true });
+      if (c.tiredUntil && !c.tiredUntil.toDate() <= new Date()) {
+        const timerEl = document.getElementById(`tired-timer-${catId}`);
+        if (timerEl) {
+          const int = setInterval(() => {
+            if (!document.getElementById('cat-modal').classList.contains('active')) { clearInterval(int); return; }
+            const diff = c.tiredUntil.toDate() - new Date();
+            if (diff <= 0) { timerEl.innerHTML = '<button class="btn btn-pink rest-btn" data-cat-id="${catId}">😴💤 Отдохнул</button>'; clearInterval(int); return; }
+            timerEl.textContent = timeLeftStr(c.tiredUntil.toDate());
+          }, 1000);
+        }
       }
 
-      // Кнопки действий
       document.querySelector('.adult-btn')?.addEventListener('click', () => confirmAdult(catId));
       document.querySelector('.rest-btn')?.addEventListener('click', () => confirmRest(catId));
       document.querySelector('.family-tree-btn')?.addEventListener('click', () => showFamilyTree(catId));
@@ -551,7 +578,6 @@
       document.getElementById('cat-modal').classList.remove('active');
     }
 
-    // Родословная
     async function showFamilyTree(catId) {
       const catDoc = await db.collection('cats').doc(catId).get();
       if (!catDoc.exists) return;
@@ -568,7 +594,6 @@
         if (fd.exists) html += `<p>#папа: ${fd.data().name} (${fd.data().mainColor})</p>`;
         else html += '<p>#папа: неизвестен</p>';
       } else html += '<p>#папа: неизвестен</p>';
-      // Братья/сестры
       if (motherId && motherId !== 'unknown') {
         const siblingsSnap = await db.collection('cats').where('motherId','==',motherId).get();
         const siblings = []; siblingsSnap.forEach(d=>{ if(d.id!==catId) siblings.push(d.data()); });
@@ -577,7 +602,6 @@
           siblings.forEach(s=> html += `<p>#${s.gender==='male'?'брат':'сестра'}: ${s.name}</p>`);
         }
       }
-      // Бабушки/дедушки
       if (motherId) {
         const motherDoc = await db.collection('cats').doc(motherId).get();
         if (motherDoc.exists) {
@@ -611,7 +635,6 @@
       document.getElementById('family-tree-modal').classList.add('active');
     }
 
-    // Сравнение котов
     function showCompareModal(catId) {
       const modal = document.getElementById('compare-modal');
       const content = document.getElementById('compare-modal-content');
@@ -629,7 +652,6 @@
         const otherDoc = await db.collection('cats').doc(otherId).get();
         const cat = catDoc.data(), other = otherDoc.data();
         let relation = 'незнакомец';
-        // Простая проверка: общие родители?
         if (cat.motherId && cat.motherId !== 'unknown' && cat.motherId === other.motherId) {
           relation = cat.gender==='male'?'брат':'сестра';
         } else if (cat.fatherId && cat.fatherId !== 'unknown' && cat.fatherId === other.fatherId) {
@@ -639,34 +661,19 @@
         else if (other.motherId === cat.id) relation = other.gender==='male'?'сын':'дочь';
         else if (other.fatherId === cat.id) relation = other.gender==='male'?'сын':'дочь';
         else {
-          // бабушки/дедушки и т.д.
-          if (cat.motherId && cat.motherId !== 'unknown') {
-            const motherDoc = await db.collection('cats').doc(cat.motherId).get();
-            if (motherDoc.exists && (motherDoc.data().motherId === other.id || motherDoc.data().fatherId === other.id)) relation = 'бабушка/дедушка';
-          }
-          if (cat.fatherId && cat.fatherId !== 'unknown') {
-            const fatherDoc = await db.collection('cats').doc(cat.fatherId).get();
-            if (fatherDoc.exists && (fatherDoc.data().motherId === other.id || fatherDoc.data().fatherId === other.id)) relation = 'бабушка/дедушка';
-          }
-          if (relation === 'незнакомец') {
-            // дальний родственник: общие предки?
-            // упрощённо: если оба имеют одного и того же родителя (или более глубоко)
-            // можно реализовать поиск общих предков, но пока оставим "дальний родственник" при наличии общих бабушек/дедушек
-            const ancestors1 = new Set();
-            const getAncestors = async (id, depth=0) => {
-              if (depth>3) return;
-              const d = await db.collection('cats').doc(id).get();
-              if (!d.exists) return;
-              const data = d.data();
-              if (data.motherId) ancestors1.add(data.motherId);
-              if (data.fatherId) ancestors1.add(data.fatherId);
-              if (data.motherId) await getAncestors(data.motherId, depth+1);
-              if (data.fatherId) await getAncestors(data.fatherId, depth+1);
-            };
-            await getAncestors(catId);
-            const common = ancestors1.has(otherId) || ancestors1.has(other.motherId) || ancestors1.has(other.fatherId);
-            if (common) relation = 'дальний родственник';
-          }
+          const ancestors1 = new Set();
+          const getAncestors = async (id, depth=0) => {
+            if (depth>3) return;
+            const d = await db.collection('cats').doc(id).get();
+            if (!d.exists) return;
+            const data = d.data();
+            if (data.motherId) ancestors1.add(data.motherId);
+            if (data.fatherId) ancestors1.add(data.fatherId);
+            if (data.motherId) await getAncestors(data.motherId, depth+1);
+            if (data.fatherId) await getAncestors(data.fatherId, depth+1);
+          };
+          await getAncestors(catId);
+          if (ancestors1.has(otherId) || ancestors1.has(other.motherId) || ancestors1.has(other.fatherId)) relation = 'дальний родственник';
         }
         content.innerHTML = `<h2>Результат</h2><p>${cat.name} для ${other.name} — <b>${relation}</b></p>
           <button class="btn btn-gray mt-2" onclick="document.getElementById('compare-modal').classList.remove('active')">Закрыть</button>`;
@@ -758,6 +765,7 @@
     }
 
     async function checkWalkingReturns() {
+      // Проверка уведомлений walking
       const notifs = await db.collection('users').doc(currentUser.uid).collection('notifications')
         .where('type','==','walking').where('read','==',false).get();
       notifs.forEach(async d=>{
@@ -773,6 +781,20 @@
           d.ref.delete();
         }
       });
+      // Дополнительная проверка: если кот в состоянии "гуляет", а уведомлений нет
+      const walkingCats = await db.collection('cats').where('owner','==',currentUser.uid).where('state','==','гуляет').get();
+      for (const catDoc of walkingCats) {
+        const existWalking = await db.collection('users').doc(currentUser.uid).collection('notifications')
+          .where('catId','==',catDoc.id).where('type','==','walking').get();
+        const existReturn = await db.collection('users').doc(currentUser.uid).collection('notifications')
+          .where('catId','==',catDoc.id).where('type','==','walk_return').get();
+        if (existWalking.empty && existReturn.empty) {
+          // Принудительно создаём возврат
+          await db.collection('users').doc(currentUser.uid).collection('notifications').add({
+            type:'walk_return', message:`🚪 Кот вернулся!`, catId:catDoc.id, read:false,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+        }
+      }
     }
 
     async function openDoor(catId) {
@@ -826,7 +848,7 @@
       updateCoinsDisplay();
     }
 
-    // Замок
+    // Замок (исправлен)
     function renderCastle() {
       const cont = document.getElementById('tab-content');
       cont.innerHTML=`<h3 class="text-lg font-bold mb-2">🏰 Замок — экспедиции</h3>
@@ -835,8 +857,12 @@
         <button id="start-expedition-btn" class="btn btn-pink">Отправиться</button>`;
       db.collection('cats').where('owner','==',currentUser.uid).where('age','!=','котёнок').where('state','==','лежит').get().then(snap=>{
         const sel = document.getElementById('castle-cat-select');
-        if (snap.empty) { sel.disabled = true; cont.innerHTML += '<p class="text-red-400 mt-2">Нет доступных котов</p>'; }
-        else snap.forEach(doc=>{ const c=doc.data(); sel.innerHTML+=`<option value="${doc.id}">${c.name}</option>`; });
+        if (snap.empty) {
+          sel.disabled = true;
+          cont.innerHTML += '<p class="text-red-400 mt-2">Нет доступных котов для экспедиции</p>';
+        } else {
+          snap.forEach(doc=>{ sel.innerHTML+=`<option value="${doc.id}">${doc.data().name}</option>`; });
+        }
       });
       document.getElementById('start-expedition-btn').addEventListener('click', async ()=>{
         const catId = document.getElementById('castle-cat-select').value;
@@ -1042,6 +1068,8 @@
       if(doorAction){ document.getElementById('message-modal').classList.remove('active'); openDoor(doorAction.dataset.catId); return; }
       const castleAction = e.target.closest('[data-action="castle-reward"]');
       if(castleAction){ document.getElementById('message-modal').classList.remove('active'); checkCastleReturns(); return; }
+      const adultAction = e.target.closest('[data-action="adult-ready"]');
+      if(adultAction){ document.getElementById('message-modal').classList.remove('active'); confirmAdult(adultAction.dataset.catId); }
     });
 
     document.getElementById('msg-btn').addEventListener('click', async ()=>{
@@ -1057,6 +1085,7 @@
         else if(n.type==='walking') html += `<button data-action="track-walking" data-end="${n.returnTime.toDate().toISOString()}" class="text-blue-400">👁</button>`;
         else if(n.type==='walk_return') html += `<button data-action="open-door" data-cat-id="${n.catId}" class="text-green-400">🚪</button>`;
         else if(n.type==='castle_expedition') html += `<button data-action="castle-reward" class="text-yellow-400">🏰</button>`;
+        else if(n.type==='adult_ready') html += `<button data-action="adult-ready" data-cat-id="${n.catId}" class="text-yellow-400">✅</button>`;
         html += `</div>`;
       });
       html += '<button class="btn btn-gray mt-2" onclick="document.getElementById(\'message-modal\').classList.remove(\'active\')">Закрыть</button>';
@@ -1159,21 +1188,16 @@
       const preg = await db.collection('cats').where('owner','==',currentUser.uid).where('isPregnant','==',true).get();
       preg.forEach(async doc=>{
         if(doc.data().pregnancyEnd?.toDate() <= now){
-          const exist = await db.collection('users').doc(currentUser.uid).collection('notifications').where('motherId','==',doc.id).where('type','==','birth_ready').get();
+          const exist = await db.collection('users').doc(currentUser.uid).collection('notifications')
+            .where('motherId','==',doc.id).where('type','==','birth_ready').get();
           if(exist.empty){
             await db.collection('users').doc(currentUser.uid).collection('notifications').add({
-              type:'birth_ready', message:`💥 ${doc.data().name} готова родить!`, motherId:doc.id, fatherId:'unknown', read:false, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+              type:'birth_ready', message:`💥 ${doc.data().name} готова родить!`, motherId:doc.id, fatherId:'unknown', read:false,
+              timestamp: firebase.firestore.FieldValue.serverTimestamp() });
           }
         }
       });
-      const tired = await db.collection('cats').where('owner','==',currentUser.uid).where('tiredUntil','!=',null).get();
-      tired.forEach(async doc=>{
-        if(doc.data().tiredUntil?.toDate() <= now){
-          const cat = doc.data();
-          // Не меняем состояние автоматически, только показываем кнопку в модалке
-        }
-      });
-      // Проверка выроста котят (отправка уведомления)
+      // Проверка выроста котят
       const kittens = await db.collection('cats').where('owner','==',currentUser.uid).where('age','==','котёнок').get();
       kittens.forEach(async doc=>{
         const cat = doc.data();
@@ -1190,16 +1214,6 @@
       checkWalkingReturns();
       checkCastleReturns();
     }, 10000);
-
-    // Обработчик для кнопки выроста из уведомлений
-    document.addEventListener('click', e => {
-      const adultReadyAction = e.target.closest('[data-action="adult-ready"]');
-      if (adultReadyAction) {
-        const catId = adultReadyAction.dataset.catId;
-        confirmAdult(catId);
-        document.getElementById('message-modal').classList.remove('active');
-      }
-    });
 
     document.getElementById('logout-btn').addEventListener('click', ()=> auth.signOut());
     console.log('🐱 Генетика котов v4.0');
